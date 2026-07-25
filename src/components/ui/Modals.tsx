@@ -213,7 +213,8 @@ function NotebookModal() {
                 style={NOTEBOOK_FONT}
               />
               {myNotes === '' && (
-                <span className="pointer-events-none absolute left-0 top-0.5">
+                // 16px caret centred in the 24px ruled line
+                <span className="pointer-events-none absolute left-0 top-1">
                   <TypingCaret />
                 </span>
               )}

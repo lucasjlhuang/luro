@@ -92,6 +92,7 @@ function BubbleEditor({ onClose }: { onClose: () => void }) {
   const setMyBubble = useAppStore((s) => s.setMyBubble);
   // Always opens empty — it composes a new message, not an edit.
   const [draft, setDraft] = useState('');
+  const [focused, setFocused] = useState(false);
   return (
     <div data-interactive style={{ ...BUBBLE_STYLE, minWidth: 155 }}>
       <button
@@ -115,14 +116,25 @@ function BubbleEditor({ onClose }: { onClose: () => void }) {
         value={draft}
         maxLength={80}
         onChange={(e) => setDraft(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
             setMyBubble(draft);
             onClose();
           }
         }}
-        placeholder="Say something…"
-        style={{ width: '100%', background: 'transparent', outline: 'none', fontSize: 12, color: '#222' }}
+        // The hint hides as soon as the caret is in the field.
+        placeholder={focused ? '' : 'Say something…'}
+        className="placeholder:text-[#b0ada6]"
+        style={{
+          width: '100%',
+          background: 'transparent',
+          outline: 'none',
+          fontSize: 12,
+          color: '#222',
+          caretColor: '#b0ada6',
+        }}
       />
       <span style={BUBBLE_TAIL} />
     </div>
