@@ -101,8 +101,8 @@ function BubbleEditor({ onClose }: { onClose: () => void }) {
       >
         {/* SVG cross, absolutely centred — immune to inline baseline quirks */}
         <svg
-          width="7"
-          height="7"
+          width="5"
+          height="5"
           viewBox="0 0 6 6"
           aria-hidden
           style={{ position: 'absolute', inset: 0, margin: 'auto', display: 'block' }}
