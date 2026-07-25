@@ -933,7 +933,7 @@ function Bed() {
       <Prop
         url={djungelskogUrl}
         position={[-0.21, 0.84, -0.7]}
-        rotationY={0.85 + (150 * Math.PI) / 180}
+        rotationY={0.85 + (165 * Math.PI) / 180}
         fitSize={0.72}
         matte
         envIntensity={0.7}
