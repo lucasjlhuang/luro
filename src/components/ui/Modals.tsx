@@ -133,7 +133,7 @@ function TypingCaret() {
 
 function MarkdownView({ source }: { source: string }) {
   if (!source.trim()) {
-    return <TypingCaret />;
+    return null;
   }
   return (
     <div className="space-y-1 text-[12px] leading-5 text-[#4a3c28]">
@@ -182,9 +182,11 @@ const RULED_LINES = {
 };
 
 const WORLD_NAMES: Record<Role, string> = {
-  USER_A: "Lulu's World",
-  USER_B: "Roro's World",
+  USER_A: "Lulu's world",
+  USER_B: "Roro's world",
 };
+
+const NOTEBOOK_FONT = { fontFamily: "'Instrument Sans', sans-serif" };
 
 function NotebookModal() {
   const myNotes = useAppStore((s) => s.myNotes);
@@ -197,9 +199,9 @@ function NotebookModal() {
     <DragShell id="notebook">
       <div className="relative rounded-2xl p-3 shadow-xl" style={{ background: ORANGE }}>
         <CloseButton bg="#c9622a" />
-        <div className="flex h-[320px] w-[452px] overflow-hidden rounded-lg shadow-inner">
+        <div className="flex h-[320px] w-[452px] overflow-hidden rounded-lg shadow-inner" style={NOTEBOOK_FONT}>
           <div className="flex flex-1 flex-col p-3" style={{ background: CREAM, ...RULED_LINES }}>
-            <div className="mb-1 text-[9px] font-bold uppercase tracking-widest text-[#a08a66]">
+            <div className="mb-1 text-[11px] font-semibold tracking-wide text-[#a08a66]">
               {WORLD_NAMES[role]}
             </div>
             <div className="relative flex flex-1">
@@ -207,7 +209,8 @@ function NotebookModal() {
                 value={myNotes}
                 onChange={(e) => setMyNotes(e.target.value)}
                 spellCheck={false}
-                className="flex-1 resize-none bg-transparent font-mono text-[12px] leading-5 text-[#4a3c28] outline-none"
+                className="flex-1 resize-none bg-transparent text-[12px] leading-5 text-[#4a3c28] outline-none"
+                style={NOTEBOOK_FONT}
               />
               {myNotes === '' && (
                 <span className="pointer-events-none absolute left-0 top-0.5">
@@ -218,7 +221,7 @@ function NotebookModal() {
           </div>
           <div className="w-[5px] shrink-0" style={{ background: 'linear-gradient(90deg, rgba(0,0,0,0.16), rgba(0,0,0,0.02))' }} />
           <div className="flex flex-1 flex-col overflow-hidden p-3" style={{ background: '#f9f4e8', ...RULED_LINES }}>
-            <div className="mb-1 text-[9px] font-bold uppercase tracking-widest text-[#a08a66]">
+            <div className="mb-1 text-[11px] font-semibold tracking-wide text-[#a08a66]">
               {WORLD_NAMES[partnerRole]}
             </div>
             <div className="flex-1 overflow-y-auto pr-1">
@@ -253,7 +256,7 @@ function StickyNote({
   return (
     <div
       className="group relative px-2 pb-1.5 pt-3 text-[11px] leading-snug text-[#5b4a32] shadow-md"
-      style={{ background: color, transform: `rotate(${tilt}deg)` }}
+      style={{ background: color, transform: `rotate(${tilt}deg)`, aspectRatio: '1 / 1' }}
     >
       <span className="absolute left-1/2 top-1 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-red-500/80 shadow-sm" />
       <div className="break-words">{children}</div>
@@ -321,7 +324,7 @@ function CorkboardModal() {
             <form
               onSubmit={submit}
               className="relative mb-2 rotate-1 px-2 pb-1.5 pt-3 shadow-md"
-              style={{ background: '#ffe66b' }}
+              style={{ background: '#ffe66b', aspectRatio: '1 / 1' }}
             >
               <span className="absolute left-1/2 top-1 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-red-500/80 shadow-sm" />
               <input
@@ -503,7 +506,13 @@ function WhiteboardModal() {
           data-draw
           width={BOARD_W * BOARD_SCALE}
           height={BOARD_H * BOARD_SCALE}
-          style={{ width: BOARD_W, height: BOARD_H, ...(eraserCursor ? { cursor: eraserCursor } : {}) }}
+          style={{
+            width: BOARD_W,
+            height: BOARD_H,
+            // Explicit both ways so leaving eraser mode always restores
+            // the marker cursor immediately.
+            cursor: eraser && eraserCursor ? eraserCursor : CURSOR.pointer.base,
+          }}
           className="touch-none rounded-lg bg-white shadow-inner"
           onPointerDown={onDown}
           onPointerMove={onMove}
@@ -618,7 +627,7 @@ function TimerModal() {
                 className="h-full rounded-full transition-all"
                 style={{
                   width: `${totalMs > 0 ? (remaining / totalMs) * 100 : 0}%`,
-                  background: '#f9c1d0',
+                  background: '#1a1a1a',
                 }}
               />
             </div>
@@ -707,8 +716,8 @@ function SettingsModal() {
   return (
     <GlassPanel id="settings" title="Settings" width="w-[300px]">
       <div className="flex gap-2">
-        {roleBtn('USER_A', 'User A (Lulu)')}
-        {roleBtn('USER_B', 'User B (Roro)')}
+        {roleBtn('USER_A', 'Lulu')}
+        {roleBtn('USER_B', 'Roro')}
       </div>
     </GlassPanel>
   );

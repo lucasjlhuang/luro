@@ -30,20 +30,53 @@ const CHAIR_Z = -1.2;
 const CHAIR_RADIUS = 0.55;
 const BED_RECT = { minX: -3.15, maxX: 0.85, minZ: -0.45, maxZ: 2.15 };
 
+/**
+ * Speech-bubble chrome per spec: solid white, 10px radius, soft drop
+ * shadow, 7x14 padding, 12px #222 text, sitting 12px above its anchor
+ * with a CSS border-triangle tail centred on the bottom edge.
+ */
+const BUBBLE_STYLE: React.CSSProperties = {
+  position: 'relative',
+  background: '#ffffff',
+  borderRadius: 10,
+  boxShadow: '0 4px 20px rgba(0,0,0,0.18)',
+  padding: '7px 14px',
+  fontSize: 12,
+  color: '#222',
+  transform: 'translateY(calc(-50% - 12px))',
+};
+
+const BUBBLE_TAIL: React.CSSProperties = {
+  position: 'absolute',
+  bottom: -14,
+  left: '50%',
+  transform: 'translateX(-50%)',
+  width: 0,
+  height: 0,
+  border: '7px solid transparent',
+  borderTopColor: '#ffffff',
+};
+
+/** Read-only bubble shown while a message is live. */
+function BubbleView({ text, opacity }: { text: string; opacity: number }) {
+  return (
+    <div style={{ ...BUBBLE_STYLE, maxWidth: 220, opacity, transition: 'opacity 0.4s' }}>
+      <span style={{ whiteSpace: 'pre-wrap', overflowWrap: 'break-word' }}>{text}</span>
+      <span style={BUBBLE_TAIL} />
+    </div>
+  );
+}
+
 /** Editable speech bubble that floats over the villager's head. */
 function BubbleEditor({ onClose }: { onClose: () => void }) {
   const setMyBubble = useAppStore((s) => s.setMyBubble);
   const [draft, setDraft] = useState(() => useAppStore.getState().myBubble.text);
   return (
-    <div
-      data-interactive
-      className="relative rounded-2xl border-2 border-[#d8d2c2] bg-[#fdfcf6] px-3 py-2 shadow-lg"
-      style={{ minWidth: 190 }}
-    >
+    <div data-interactive style={{ ...BUBBLE_STYLE, minWidth: 180 }}>
       <button
         onClick={onClose}
         aria-label="Close"
-        className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[#d8d2c2] text-[9px] font-bold text-[#6b5b4a] shadow"
+        className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[#e8e4dc] text-[9px] font-bold text-[#6b5b4a] shadow"
       >
         ✕
       </button>
@@ -59,9 +92,9 @@ function BubbleEditor({ onClose }: { onClose: () => void }) {
           }
         }}
         placeholder="Say something…"
-        className="w-full bg-transparent text-[13px] text-[#33302a] outline-none placeholder:text-[#b8ac96]"
+        style={{ width: '100%', background: 'transparent', outline: 'none', fontSize: 12, color: '#222' }}
       />
-      <span className="absolute -bottom-2 left-1/2 h-3.5 w-3.5 -translate-x-1/2 rotate-45 border-b-2 border-r-2 border-[#d8d2c2] bg-[#fdfcf6]" />
+      <span style={BUBBLE_TAIL} />
     </div>
   );
 }
@@ -234,65 +267,6 @@ function makeZzzTexture(): THREE.CanvasTexture {
   return new THREE.CanvasTexture(c);
 }
 
-/** Rounded speech balloon with up-to-3-line word wrap and a tail. */
-function drawBubble(canvas: HTMLCanvasElement, text: string): void {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-  const W = canvas.width;
-  ctx.clearRect(0, 0, W, canvas.height);
-  if (!text) return;
-
-  ctx.font = '600 26px -apple-system, "Segoe UI", sans-serif';
-  const maxW = 260;
-  const words = text.split(/\s+/);
-  const lines: string[] = [];
-  let line = '';
-  let truncated = false;
-  for (const word of words) {
-    const test = line ? `${line} ${word}` : word;
-    if (ctx.measureText(test).width > maxW && line) {
-      if (lines.length === 2) {
-        truncated = true;
-        break;
-      }
-      lines.push(line);
-      line = word;
-    } else {
-      line = test;
-    }
-  }
-  if (line && lines.length < 3) lines.push(line);
-  if (truncated) lines[lines.length - 1] += '…';
-
-  const lineH = 34;
-  const boxH = lines.length * lineH + 26;
-  const boxBottom = 134;
-  const boxTop = boxBottom - boxH;
-
-  ctx.fillStyle = '#fdfcf6';
-  ctx.strokeStyle = '#d8d2c2';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.roundRect(12, boxTop, W - 24, boxH, 18);
-  ctx.fill();
-  ctx.stroke();
-  // tail
-  ctx.beginPath();
-  ctx.moveTo(W / 2 - 16, boxBottom - 2);
-  ctx.lineTo(W / 2 - 2, boxBottom + 28);
-  ctx.lineTo(W / 2 + 16, boxBottom - 2);
-  ctx.closePath();
-  ctx.fillStyle = '#fdfcf6';
-  ctx.fill();
-
-  ctx.fillStyle = '#33302a';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  lines.forEach((l, i) => {
-    ctx.fillText(l, W / 2, boxTop + 20 + i * lineH + lineH / 2 - 8);
-  });
-}
-
 type Phase = 'walk' | 'settle';
 type Tele = 'none' | 'out' | 'in';
 
@@ -349,8 +323,18 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
   const eyes = useRef<THREE.Group>(null!);
   const zzz = useRef<THREE.Mesh>(null!);
   const zzzMat = useRef<THREE.MeshBasicMaterial>(null!);
-  const bubbleMesh = useRef<THREE.Mesh>(null!);
-  const bubbleMat = useRef<THREE.MeshBasicMaterial>(null!);
+
+  // Bubble lifetime: a slow tick re-evaluates age so the bubble expires
+  // and fades without a per-frame React subscription.
+  const [, setBubbleTick] = useState(0);
+  useEffect(() => {
+    if (!bubble.text) return;
+    const id = setInterval(() => setBubbleTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [bubble.text, bubble.updatedAt]);
+  const bubbleAge = Date.now() - bubble.updatedAt;
+  const bubbleShown = bubble.text.length > 0 && bubbleAge < BUBBLE_TTL;
+  const bubbleOpacity = bubbleShown ? Math.min(1, (BUBBLE_TTL - bubbleAge) / 3000) : 0;
   const puffGroups = [useRef<THREE.Group>(null!), useRef<THREE.Group>(null!)];
   // One shared material per puff so all particles fade together.
   const puffMaterials = useMemo(
@@ -368,18 +352,6 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
   );
 
   const zzzTexture = useMemo(makeZzzTexture, []);
-  const bubbleCanvas = useMemo(() => {
-    const c = document.createElement('canvas');
-    c.width = 320;
-    c.height = 176;
-    return c;
-  }, []);
-  const bubbleTexture = useMemo(() => new THREE.CanvasTexture(bubbleCanvas), [bubbleCanvas]);
-  useEffect(() => {
-    drawBubble(bubbleCanvas, bubble.text);
-    bubbleTexture.needsUpdate = true;
-  }, [bubble.text, bubbleCanvas, bubbleTexture]);
-
   const puffDirs = useMemo(() => {
     const dirs: THREE.Vector3[] = [];
     for (let i = 0; i < PUFF_COUNT; i++) {
@@ -697,14 +669,6 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
       overheadAnchor.current.position.set(s.x, root.current.position.y + HEAD_TOP + 0.35, s.z);
     }
 
-    /* ---------- speech bubble (hidden while editing) ---------- */
-    const age = Date.now() - bubble.updatedAt;
-    const bubbleVisible = bubble.text.length > 0 && age < BUBBLE_TTL && !editing;
-    const fade = bubbleVisible ? Math.min(1, (BUBBLE_TTL - age) / 3000) : 0;
-    bubbleMat.current.opacity = damp(bubbleMat.current.opacity, fade * s.scale, 8);
-    const headY = root.current.position.y + (lieE > 0.5 ? 0.6 : 1.3);
-    bubbleMesh.current.position.set(s.x, headY + 0.45, s.z);
-    bubbleMesh.current.quaternion.copy(frame.camera.quaternion);
   });
 
   return (
@@ -951,16 +915,18 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
         </group>
       ))}
 
-      {/* editable speech bubble over the head */}
-      {variant === 'me' && (
-        <group ref={overheadAnchor}>
-          {editing && (
-            <Html center zIndexRange={[15, 0]}>
-              <BubbleEditor onClose={() => useAppStore.getState().setActiveModal('NONE')} />
-            </Html>
-          )}
-        </group>
-      )}
+      {/* speech bubble over the head: editor for me, live text for both */}
+      <group ref={overheadAnchor}>
+        {variant === 'me' && editing ? (
+          <Html center zIndexRange={[15, 0]}>
+            <BubbleEditor onClose={() => useAppStore.getState().setActiveModal('NONE')} />
+          </Html>
+        ) : bubbleShown ? (
+          <Html center zIndexRange={[13, 0]} style={{ pointerEvents: 'none' }}>
+            <BubbleView text={bubble.text} opacity={bubbleOpacity} />
+          </Html>
+        ) : null}
+      </group>
 
       {/* drop-zone markers while carrying: bed to sleep, chairs to work */}
       {variant === 'me' && dragActive && (
@@ -990,17 +956,6 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
         <meshBasicMaterial ref={zzzMat} map={zzzTexture} transparent opacity={0} depthWrite={false} />
       </mesh>
 
-      {/* speech bubble */}
-      <mesh ref={bubbleMesh} raycast={() => undefined}>
-        <planeGeometry args={[1.05, 0.58]} />
-        <meshBasicMaterial
-          ref={bubbleMat}
-          map={bubbleTexture}
-          transparent
-          opacity={0}
-          depthWrite={false}
-        />
-      </mesh>
     </>
   );
 }
