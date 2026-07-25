@@ -710,14 +710,15 @@ function Whiteboard3D() {
 function DeskLamp() {
   const toggleNightMode = useAppStore((s) => s.toggleNightMode);
   const isNight = useAppStore((s) => s.isNightMode);
-  const bulbMat = useRef<THREE.MeshStandardMaterial>(null!);
+  const shadeMat = useRef<THREE.MeshStandardMaterial>(null!);
   const lamp = useRef<THREE.PointLight>(null!);
 
   useFrame((_, delta) => {
     const t = 1 - Math.exp(-Math.min(delta, 0.05) * 6);
     lamp.current.intensity += ((isNight ? 2.4 : 0) - lamp.current.intensity) * t;
-    bulbMat.current.emissiveIntensity +=
-      ((isNight ? 2.2 : 0.25) - bulbMat.current.emissiveIntensity) * t;
+    // The shade itself glows from within at night — no visible bulb.
+    shadeMat.current.emissiveIntensity +=
+      ((isNight ? 0.85 : 0) - shadeMat.current.emissiveIntensity) * t;
   });
 
   return (
@@ -733,32 +734,26 @@ function DeskLamp() {
               emissiveIntensity={0.35}
             />
           </mesh>
-          {/* upright stem, short angled arm, then a shade that opens
-              downward (cone apex up) with the bulb tucked in its mouth */}
-          <mesh position={[0, 0.3, 0]} castShadow>
-            <cylinderGeometry args={[0.028, 0.032, 0.52, 12]} />
+          {/* one gently tilted stem flowing into a downward-opening
+              shade — no elbow joint, no visible bulb */}
+          <mesh position={[0.04, 0.32, 0.02]} rotation={[0.12, 0, -0.18]} castShadow>
+            <cylinderGeometry args={[0.026, 0.034, 0.56, 12]} />
             <meshStandardMaterial color={P.woodMid} {...CLAY} />
           </mesh>
-          <mesh position={[0.07, 0.58, 0.045]} rotation={[0.35, 0, -0.7]} castShadow>
-            <cylinderGeometry args={[0.024, 0.024, 0.2, 10]} />
-            <meshStandardMaterial color={P.woodMid} {...CLAY} />
-          </mesh>
-          <mesh position={[0.15, 0.62, 0.09]} rotation={[0.3, 0, -0.4]} castShadow>
+          <mesh position={[0.12, 0.62, 0.07]} rotation={[0.25, 0, -0.35]} castShadow>
             <coneGeometry args={[0.17, 0.24, 24, 1, true]} />
-            <meshStandardMaterial color={P.orange} {...CLAY} side={THREE.DoubleSide} />
-          </mesh>
-          <mesh position={[0.19, 0.53, 0.12]}>
-            <sphereGeometry args={[0.06, 16, 16]} />
             <meshStandardMaterial
-              ref={bulbMat}
-              color="#fff7e0"
-              emissive="#ffc36b"
-              emissiveIntensity={0.25}
+              ref={shadeMat}
+              color={P.orange}
+              {...CLAY}
+              side={THREE.DoubleSide}
+              emissive="#ffb86b"
+              emissiveIntensity={0}
             />
           </mesh>
           <pointLight
             ref={lamp}
-            position={[0.21, 0.47, 0.14]}
+            position={[0.15, 0.5, 0.1]}
             color="#ffb86b"
             intensity={0}
             distance={7}
