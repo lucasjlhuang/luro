@@ -502,6 +502,10 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
         setDragActive(true);
         setForceInteractive(true);
         lockCursor(CURSOR.grab);
+        // Picking the villager up cancels an open speech editor.
+        if (useAppStore.getState().activeModal === 'SPEECH') {
+          useAppStore.getState().setActiveModal('NONE');
+        }
         // A carried villager stops holding furniture poses.
         if (useAppStore.getState().myStatus !== 'IDLE') {
           useAppStore.getState().setMyStatus('IDLE');
@@ -751,11 +755,11 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
 
     /* ---------- overhead anchor (speech bubbles) ---------- */
     if (overheadAnchor.current) {
-      // Lying rotates the body so the head points toward -x and the
-      // body's top is only ~0.35 above the root — follow the head there.
+      // Lying rotates the body so the head points toward -x; hover just
+      // over the face on the pillow rather than standing-head height.
       overheadAnchor.current.position.set(
-        s.x - lieE * HEAD_TOP,
-        root.current.position.y + (1 - lieE) * HEAD_TOP + lieE * 0.35,
+        s.x - lieE * 0.7,
+        root.current.position.y + (1 - lieE) * HEAD_TOP + lieE * 0.18,
         s.z
       );
     }
