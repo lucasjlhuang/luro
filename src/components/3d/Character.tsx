@@ -751,7 +751,13 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
 
     /* ---------- overhead anchor (speech bubbles) ---------- */
     if (overheadAnchor.current) {
-      overheadAnchor.current.position.set(s.x, root.current.position.y + HEAD_TOP, s.z);
+      // Lying rotates the body so the head points toward -x and the
+      // body's top is only ~0.35 above the root — follow the head there.
+      overheadAnchor.current.position.set(
+        s.x - lieE * HEAD_TOP,
+        root.current.position.y + (1 - lieE) * HEAD_TOP + lieE * 0.35,
+        s.z
+      );
     }
 
   });
