@@ -10,9 +10,6 @@ import { CURSOR, CursorSpec, lockCursor, setCursor, unlockCursor } from '../../l
 import Character from './Character';
 import Prop from './Prop';
 import djungelskogUrl from '../../assets/models/djungelskog.glb?url';
-import pokemonCardsUrl from '../../assets/models/pokemon-cards.glb?url';
-import spaceMarineUrl from '../../assets/models/space-marine.glb?url';
-import cardPacksUrl from '../../assets/models/card-packs.glb?url';
 
 /* ------------------------------------------------------------------ */
 /* Palette — tuned to the cozy teal/wood/orange reference render      */
@@ -1241,18 +1238,6 @@ export default function IsometricRoom() {
         <LaundryBasket position={[2.65, 0, -2.55]} />
         <Monstera position={[-2.6, 0, -2.5]} rotationY={2.1} scale={0.92} />
         <ToyCar position={[-2.55, 0, 2.55]} rotationY={-0.6} />
-        {/* decor props: card spread + packs together on the desk's
-            front-left, space marine standing guard by the rug's corner */}
-        <Prop url={pokemonCardsUrl} position={[-1.0, 1.21, -1.72]} rotationY={0.4} fitAxis="x" fitSize={0.3} />
-        <Prop url={cardPacksUrl} position={[-0.55, 1.21, -1.72]} rotationY={0.2} fitAxis="x" fitSize={0.3} />
-        <Prop
-          url={spaceMarineUrl}
-          position={[2.55, 0.07, 2.55]}
-          rotationY={0.8}
-          fitSize={0.51}
-          envIntensity={2.6}
-        />
-        {/* Chairs enlarged to stay proportionate to the now-smaller desk. */}
         <DeskChair position={[0.62, 0, -1.2]} scale={1.12} />
         <DeskChair position={[-0.42, 0, -1.2]} scale={1.12} />
         <Character variant="me" />

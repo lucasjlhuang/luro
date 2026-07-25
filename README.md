@@ -40,12 +40,6 @@ from a 1.3M-triangle scan). This project is personal and non-commercial.
 
 - "Chunky Djungelskog Bear" by [Arkify 3D](https://sketchfab.com/arkify) — CC-BY-NC-4.0
   — https://sketchfab.com/3d-models/chunky-djungelskog-bear-a865f0ac929c4cfc88ff270f7bf18c43
-- "POKEMON CARDS 7/9" by [tobyporter](https://sketchfab.com/tobyporter) — CC-BY-NC-4.0
-  — https://sketchfab.com/3d-models/pokemon-cards-79-cedffde11c0045aca5d267a57ca6a2a1
-- "Space Marine" by [neil1neil38](https://sketchfab.com/neil1neil38) — CC-BY-4.0
-  — https://sketchfab.com/3d-models/space-marine-18c4db9aeabe4d9e98ae76c80c1c2581
-- "Trading Card Pack" by [goonmize1](https://sketchfab.com/goonmize1) — CC-BY-4.0
-  — https://sketchfab.com/3d-models/trading-card-pack-26d1a87e47814d0ea3a710d169e3a671
 
 ## Notes & known limits
 
