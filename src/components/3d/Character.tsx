@@ -24,8 +24,9 @@ import roroUrl from '../../assets/models/roro.glb?url';
 
 const MODELS: Record<Role, { url: string; height: number; yaw: number }> = {
   // TODO: swap to lulu.glb when provided — Roro is standing in for both.
-  USER_A: { url: roroUrl, height: 1.1, yaw: 0 },
-  USER_B: { url: roroUrl, height: 1.1, yaw: 0 },
+  // The source model faces -z, so add a half turn.
+  USER_A: { url: roroUrl, height: 1.1, yaw: Math.PI },
+  USER_B: { url: roroUrl, height: 1.1, yaw: Math.PI },
 };
 
 useGLTF.preload(roroUrl);
@@ -463,7 +464,8 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
   const destinationFor = (st: CharacterStatus, s: SimState, remote: CharPos | null) => {
     // No sit clip in this pack: "working" stands at the desk casting.
     if (st === 'WORKING') return { x: s.chairX, z: -1.5, yaw: Math.PI };
-    if (st === 'SLEEPING') return { x: -0.55, z: spots.lieZ, yaw: -Math.PI / 2 };
+    // +PI/2 so the bed pose nets out unchanged under the model's half turn.
+    if (st === 'SLEEPING') return { x: -0.55, z: spots.lieZ, yaw: Math.PI / 2 };
     if (remote) return { x: remote.x, z: remote.z, yaw: remote.yaw as number | null };
     const wp = spots.idle[s.wp % spots.idle.length];
     return { x: wp[0], z: wp[1], yaw: null as number | null };
