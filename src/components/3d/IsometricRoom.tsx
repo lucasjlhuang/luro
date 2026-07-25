@@ -928,12 +928,12 @@ function Bed() {
       {/* shirt tossed on the bed's near-left corner */}
       <Shirt position={[1.2, 0.91, 0.85]} rotation={[0.02, 0.7, -0.03]} />
       {/* the real Djungelskog, propped on the bed
-          (+200° to face the room, +75° more to the left; nudged
+          (+200° to face the room, then 75° back the other way; nudged
           25px right + 25px down in screen space = +0.79 world x) */}
       <Prop
         url={djungelskogUrl}
         position={[-0.21, 0.84, -0.7]}
-        rotationY={0.85 + (275 * Math.PI) / 180}
+        rotationY={0.85 + (125 * Math.PI) / 180}
         fitSize={0.72}
         matte
         envIntensity={0.7}
