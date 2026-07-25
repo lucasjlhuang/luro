@@ -1083,7 +1083,9 @@ function PencilCup({ position }: { position: [number, number, number] }) {
                       }}
                       className={`flex h-9 w-9 items-center justify-center rounded-full border text-[10px] font-bold shadow-lg backdrop-blur transition ${
                         role === r
-                          ? 'border-sky-400 bg-sky-100/90 text-sky-700 ring-2 ring-sky-400'
+                          ? r === 'USER_A'
+                            ? 'border-sky-400 bg-sky-100/90 text-sky-700 ring-2 ring-sky-400'
+                            : 'border-pink-400 bg-pink-100/90 text-pink-600 ring-2 ring-pink-400'
                           : 'border-white/70 bg-white/85 text-slate-600 hover:bg-white'
                       }`}
                     >

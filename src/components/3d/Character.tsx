@@ -60,8 +60,9 @@ const BUBBLE_TAIL: React.CSSProperties = {
 };
 
 /**
- * Read-only bubble shown while a message is live: one continuous gentle
- * fade across its whole lifetime, driven by a single CSS transition.
+ * Read-only bubble shown while a message is live: fully visible for
+ * BUBBLE_HOLD, then one gentle BUBBLE_FADE-long fade — a single CSS
+ * transition with a delay.
  */
 function BubbleView({ text }: { text: string }) {
   const [faded, setFaded] = useState(false);
@@ -77,7 +78,7 @@ function BubbleView({ text }: { text: string }) {
         width: 'max-content',
         maxWidth: '25ch',
         opacity: faded ? 0 : 1,
-        transition: `opacity ${BUBBLE_TTL}ms linear`,
+        transition: `opacity ${BUBBLE_FADE}ms ease-out ${BUBBLE_HOLD}ms`,
       }}
     >
       <span style={{ whiteSpace: 'pre-wrap', overflowWrap: 'break-word' }}>{text}</span>
@@ -96,9 +97,9 @@ function BubbleEditor({ onClose }: { onClose: () => void }) {
       <button
         onClick={onClose}
         aria-label="Close"
-        className="absolute -right-1 -top-1 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-[#e8e4dc] text-[6px] font-bold text-[#6b5b4a] shadow"
+        className="absolute -right-1 -top-1 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-[#e8e4dc] text-[10px] font-bold leading-none text-[#6b5b4a] shadow"
       >
-        ✕
+        ×
       </button>
       <input
         autoFocus
@@ -211,7 +212,9 @@ const SIT_RAISE = 0.35; // hips onto the chair seat (~0.63 after 1.12x scale)
 const LIE_RAISE = 1.0; // body onto the mattress top (~0.86) plus half-thickness
 const TELE_OUT = 0.25;
 const TELE_IN = 0.3;
-const BUBBLE_TTL = 5_000;
+const BUBBLE_HOLD = 5_000; // fully visible
+const BUBBLE_FADE = 1_500; // then one gentle fade
+const BUBBLE_TTL = BUBBLE_HOLD + BUBBLE_FADE;
 const ROOM_CLAMP = 2.9;
 const CARRY_LIFT = 0.4; // how high a picked-up villager floats
 const HEAD_TOP = 1.36; // head centre (1.0) + radius (0.34) + hair, above the root
