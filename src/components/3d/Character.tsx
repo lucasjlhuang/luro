@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { ThreeEvent, useFrame } from '@react-three/fiber';
-import { RoundedBox } from '@react-three/drei';
+import { Html, RoundedBox } from '@react-three/drei';
 import { CharacterStatus, CharPos, partnerOf, useAppStore } from '../../store/useAppStore';
 import { setForceInteractive } from '../../lib/hitTest';
 import { CURSOR, lockCursor, setCursor, unlockCursor } from '../../lib/cursors';
@@ -23,6 +23,13 @@ import { CURSOR, lockCursor, setCursor, unlockCursor } from '../../lib/cursors';
 const WALK_SPEED = 1.05;
 const SKIN = '#f6e0c0';
 const MAT = { roughness: 0.85, metalness: 0.05 };
+
+/** Status choices shown as bubbles above the villager's head. */
+const STATUS_OPTIONS: Array<{ value: CharacterStatus; icon: string; label: string }> = [
+  { value: 'IDLE', icon: '🚶', label: 'Idle — wander around' },
+  { value: 'WORKING', icon: '💻', label: 'Working — sit at the desk' },
+  { value: 'SLEEPING', icon: '😴', label: 'Sleeping — lie on the bed' },
+];
 
 /** Two villagers: USER_A is the boy, USER_B the girl. */
 const LOOKS = {
@@ -288,8 +295,14 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
   const role = useAppStore((s) => (variant === 'me' ? s.role : partnerOf(s.role)));
   const look = LOOKS[role];
 
+  // Status bubbles hover over the head while the speech input is open.
+  const pickerOpen = useAppStore((s) => variant === 'me' && s.activeModal === 'SPEECH');
+  const myStatus = useAppStore((s) => s.myStatus);
+  const setMyStatus = useAppStore((s) => s.setMyStatus);
+
   const root = useRef<THREE.Group>(null!);
   const body = useRef<THREE.Group>(null!);
+  const pickerAnchor = useRef<THREE.Group>(null!);
   const torso = useRef<THREE.Group>(null!);
   const head = useRef<THREE.Group>(null!);
   const armL = useRef<THREE.Group>(null!);
@@ -627,6 +640,11 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     zzz.current.position.set(s.x - 0.55, 1.5 + Math.sin(t * 1.2) * 0.06, s.z);
     zzz.current.quaternion.copy(frame.camera.quaternion);
 
+    /* ---------- status picker anchor ---------- */
+    if (pickerAnchor.current) {
+      pickerAnchor.current.position.set(s.x, root.current.position.y + HEAD_TOP + 0.35, s.z);
+    }
+
     /* ---------- speech bubble ---------- */
     const age = Date.now() - bubble.updatedAt;
     const bubbleVisible = bubble.text.length > 0 && age < BUBBLE_TTL;
@@ -880,6 +898,36 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
           ))}
         </group>
       ))}
+
+      {/* status bubbles above the head while the speech input is open */}
+      {variant === 'me' && (
+        <group ref={pickerAnchor}>
+          {pickerOpen && (
+            <Html center zIndexRange={[15, 0]}>
+              <div
+                data-interactive
+                className="flex items-center gap-1.5 rounded-full border border-white/60 bg-white/70 px-2 py-1.5 shadow-lg backdrop-blur-xl"
+              >
+                {STATUS_OPTIONS.map((o) => (
+                  <button
+                    key={o.value}
+                    onClick={() => setMyStatus(o.value)}
+                    title={o.label}
+                    aria-label={o.label}
+                    className={`flex h-7 w-7 items-center justify-center rounded-full text-[15px] leading-none transition ${
+                      myStatus === o.value
+                        ? 'bg-sky-500/20 ring-2 ring-sky-400'
+                        : 'opacity-60 hover:bg-slate-900/10 hover:opacity-100'
+                    }`}
+                  >
+                    {o.icon}
+                  </button>
+                ))}
+              </div>
+            </Html>
+          )}
+        </group>
+      )}
 
       {/* floating Zzz while asleep */}
       <mesh ref={zzz} raycast={() => undefined}>

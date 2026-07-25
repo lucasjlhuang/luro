@@ -134,6 +134,7 @@ export function installCursorStyles(): void {
     rule('input, textarea, select', CURSOR.default),
     rule('button, [role="button"], summary, label', CURSOR.pointer),
     rule('[data-draw]', CURSOR.pointer),
+    rule('[data-drag-handle]', CURSOR.open),
   ].join('\n');
   document.head.appendChild(style);
   setCursor(CURSOR.default);

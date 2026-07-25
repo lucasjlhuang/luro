@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import IsometricRoom from './components/3d/IsometricRoom';
-import { ModalLayer, StatusBar } from './components/ui/Modals';
+import { ModalLayer } from './components/ui/Modals';
 import { usePassThrough } from './hooks/usePassThrough';
 import { installCursorStyles } from './lib/cursors';
 import { useAppStore } from './store/useAppStore';
@@ -41,7 +41,6 @@ export default function App() {
         </Canvas>
       </div>
       <ModalLayer />
-      <StatusBar />
     </div>
   );
 }

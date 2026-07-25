@@ -8,7 +8,6 @@ import {
   useState,
 } from 'react';
 import {
-  CharacterStatus,
   PEER_IDS,
   Role,
   Task,
@@ -16,10 +15,15 @@ import {
   useAppStore,
 } from '../../store/useAppStore';
 import { renderStrokes } from '../../lib/strokes';
+import { CURSOR, lockCursor, setCursor, unlockCursor } from '../../lib/cursors';
+import { setForceInteractive } from '../../lib/hitTest';
 
 /* ------------------------------------------------------------------ */
-/* Shared glass panel                                                 */
+/* Shared glass panel: white glassmorphism, draggable by its header.  */
+/* Positions are remembered per panel for the session.                */
 /* ------------------------------------------------------------------ */
+
+const panelPositions = new Map<string, { x: number; y: number }>();
 
 function Panel({
   title,
@@ -31,17 +35,55 @@ function Panel({
   children: ReactNode;
 }) {
   const setActiveModal = useAppStore((s) => s.setActiveModal);
+  const [pos, setPos] = useState(() => panelPositions.get(title) ?? { x: 0, y: 0 });
+
+  const startDrag = (e: ReactPointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const originX = e.clientX - pos.x;
+    const originY = e.clientY - pos.y;
+    // Keep the window interactive even when the cursor crosses empty
+    // pixels mid-drag, and pin the grab cursor.
+    setForceInteractive(true);
+    lockCursor(CURSOR.grab);
+    const onMove = (ev: PointerEvent) => {
+      const limX = window.innerWidth / 2 - 30;
+      const limY = window.innerHeight / 2 - 30;
+      const next = {
+        x: Math.max(-limX, Math.min(limX, ev.clientX - originX)),
+        y: Math.max(-limY, Math.min(limY, ev.clientY - originY)),
+      };
+      panelPositions.set(title, next);
+      setPos(next);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      setForceInteractive(false);
+      unlockCursor();
+      setCursor(CURSOR.open);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
   return (
     <div
       data-interactive
-      className={`pointer-events-auto flex flex-col rounded-2xl border border-white/15 bg-slate-900/80 text-slate-100 shadow-2xl backdrop-blur-xl ${width}`}
+      style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}
+      className={`pointer-events-auto flex flex-col rounded-2xl border border-white/60 bg-white/65 text-slate-700 shadow-xl backdrop-blur-2xl ${width}`}
     >
-      <div className="flex items-center justify-between border-b border-white/10 px-4 py-2.5">
-        <h2 className="text-sm font-semibold tracking-wide">{title}</h2>
+      <div
+        data-drag-handle
+        onPointerDown={startDrag}
+        className="flex select-none items-center justify-between border-b border-slate-900/10 px-4 py-2.5"
+      >
+        <h2 className="text-sm font-semibold tracking-wide text-slate-600">{title}</h2>
         <button
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={() => setActiveModal('NONE')}
           aria-label="Close"
-          className="rounded-md px-2 py-0.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
+          className="rounded-md px-2 py-0.5 text-slate-400 transition hover:bg-slate-900/10 hover:text-slate-700"
         >
           ✕
         </button>
@@ -62,7 +104,7 @@ function inlineMd(text: string, keyPrefix: string): ReactNode[] {
     if (/^\*[^*]+\*$/.test(part)) return <em key={key}>{part.slice(1, -1)}</em>;
     if (/^`[^`]+`$/.test(part))
       return (
-        <code key={key} className="rounded bg-white/10 px-1 text-[11px]">
+        <code key={key} className="rounded bg-slate-900/10 px-1 text-[11px]">
           {part.slice(1, -1)}
         </code>
       );
@@ -72,10 +114,10 @@ function inlineMd(text: string, keyPrefix: string): ReactNode[] {
 
 function MarkdownView({ source }: { source: string }) {
   if (!source.trim()) {
-    return <p className="text-[12px] italic text-slate-500">Nothing written yet…</p>;
+    return <p className="text-[12px] italic text-slate-400">Nothing written yet…</p>;
   }
   return (
-    <div className="space-y-1 text-[12px] leading-relaxed">
+    <div className="space-y-1 text-[12px] leading-relaxed text-slate-700">
       {source.split('\n').map((line, i) => {
         const key = `line-${i}`;
         if (line.startsWith('### '))
@@ -122,9 +164,9 @@ function NotebookModal() {
 
   return (
     <Panel title="Shared Notebook" width="w-[464px]">
-      <div className="flex h-[300px] overflow-hidden rounded-xl bg-amber-950/30 ring-1 ring-white/10">
-        <div className="flex flex-1 flex-col bg-amber-50/[0.06] p-2.5">
-          <div className="mb-1.5 text-[10px] uppercase tracking-widest text-amber-200/70">
+      <div className="flex h-[300px] overflow-hidden rounded-xl bg-white/40 ring-1 ring-slate-900/10">
+        <div className="flex flex-1 flex-col bg-amber-100/30 p-2.5">
+          <div className="mb-1.5 text-[10px] uppercase tracking-widest text-slate-400">
             My page · markdown
           </div>
           <textarea
@@ -132,12 +174,12 @@ function NotebookModal() {
             onChange={(e) => setMyNotes(e.target.value)}
             spellCheck={false}
             placeholder={'# Today\n- write something…'}
-            className="flex-1 resize-none bg-transparent font-mono text-[12px] leading-relaxed text-amber-50 outline-none placeholder:text-amber-100/25"
+            className="flex-1 resize-none bg-transparent font-mono text-[12px] leading-relaxed text-slate-700 outline-none placeholder:text-slate-400"
           />
         </div>
-        <div className="w-px bg-white/15" />
-        <div className="flex flex-1 flex-col overflow-hidden bg-amber-50/[0.03] p-2.5">
-          <div className="mb-1.5 text-[10px] uppercase tracking-widest text-sky-200/70">
+        <div className="w-px bg-slate-900/10" />
+        <div className="flex flex-1 flex-col overflow-hidden bg-amber-50/30 p-2.5">
+          <div className="mb-1.5 text-[10px] uppercase tracking-widest text-slate-400">
             Partner's page {connected ? '· live' : '· offline'}
           </div>
           <div className="flex-1 overflow-y-auto pr-1">
@@ -158,7 +200,7 @@ function IconButton({ label, onClick, title }: { label: string; onClick: () => v
     <button
       onClick={onClick}
       title={title}
-      className="rounded px-1 text-[11px] text-slate-400 transition hover:bg-white/10 hover:text-white"
+      className="rounded px-1 text-[11px] text-slate-400 transition hover:bg-slate-900/10 hover:text-slate-700"
     >
       {label}
     </button>
@@ -167,7 +209,7 @@ function IconButton({ label, onClick, title }: { label: string; onClick: () => v
 
 function TaskCard({ task, actions }: { task: Task; actions?: ReactNode }) {
   return (
-    <div className="group rounded-lg bg-white/[0.07] px-2 py-1.5 text-[12px] ring-1 ring-white/10">
+    <div className="group rounded-lg bg-white/60 px-2 py-1.5 text-[12px] text-slate-700 ring-1 ring-slate-900/10">
       <div className="flex items-start justify-between gap-1">
         <span className="break-words leading-snug">{task.text}</span>
         {actions && (
@@ -196,7 +238,7 @@ function CorkboardModal() {
 
   const todo = myTasks.filter((t) => t.status === 'TODO');
   const doing = myTasks.filter((t) => t.status === 'IN_PROGRESS');
-  const columnCls = 'flex min-h-0 flex-col rounded-xl bg-white/[0.04] p-2 ring-1 ring-white/10';
+  const columnCls = 'flex min-h-0 flex-col rounded-xl bg-white/40 p-2 ring-1 ring-slate-900/10';
   const headerCls = 'mb-1.5 text-[10px] font-semibold uppercase tracking-widest';
   const listCls = 'flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-0.5';
 
@@ -204,13 +246,13 @@ function CorkboardModal() {
     <Panel title="Shared Corkboard" width="w-[464px]">
       <div className="grid h-[300px] grid-cols-3 gap-2">
         <section className={columnCls}>
-          <div className={`${headerCls} text-amber-300/80`}>To Do · {todo.length}</div>
+          <div className={`${headerCls} text-amber-600`}>To Do · {todo.length}</div>
           <form onSubmit={submit} className="mb-1.5">
             <input
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               placeholder="Add task…"
-              className="w-full rounded-md bg-white/10 px-2 py-1 text-[12px] outline-none ring-1 ring-white/10 placeholder:text-slate-500 focus:ring-amber-300/50"
+              className="w-full rounded-md bg-white/70 px-2 py-1 text-[12px] text-slate-700 outline-none ring-1 ring-slate-900/10 placeholder:text-slate-400 focus:ring-amber-400/60"
             />
           </form>
           <div className={listCls}>
@@ -230,7 +272,7 @@ function CorkboardModal() {
         </section>
 
         <section className={columnCls}>
-          <div className={`${headerCls} text-sky-300/80`}>In Progress · {doing.length}</div>
+          <div className={`${headerCls} text-sky-600`}>In Progress · {doing.length}</div>
           <div className={listCls}>
             {doing.map((t) => (
               <TaskCard
@@ -248,18 +290,18 @@ function CorkboardModal() {
         </section>
 
         <section className={columnCls}>
-          <div className={`${headerCls} text-violet-300/80`}>Partner's Tasks · {partnerTasks.length}</div>
+          <div className={`${headerCls} text-violet-600`}>Partner's Tasks · {partnerTasks.length}</div>
           <div className={listCls}>
             {partnerTasks.map((t) => (
-              <div key={t.id} className="rounded-lg bg-white/[0.05] px-2 py-1.5 text-[12px] ring-1 ring-white/10">
+              <div key={t.id} className="rounded-lg bg-white/50 px-2 py-1.5 text-[12px] text-slate-700 ring-1 ring-slate-900/10">
                 <div className="leading-snug">{t.text}</div>
-                <div className={`mt-0.5 text-[9px] uppercase tracking-wider ${t.status === 'IN_PROGRESS' ? 'text-sky-400' : 'text-amber-400/80'}`}>
+                <div className={`mt-0.5 text-[9px] uppercase tracking-wider ${t.status === 'IN_PROGRESS' ? 'text-sky-600' : 'text-amber-600'}`}>
                   {t.status === 'IN_PROGRESS' ? 'in progress' : 'to do'}
                 </div>
               </div>
             ))}
             {partnerTasks.length === 0 && (
-              <p className="text-[11px] italic text-slate-500">No partner tasks yet.</p>
+              <p className="text-[11px] italic text-slate-400">No partner tasks yet.</p>
             )}
           </div>
         </section>
@@ -363,13 +405,13 @@ function WhiteboardModal() {
               }}
               aria-label={`Pen color ${c}`}
               className={`h-5 w-5 rounded-full ring-2 transition ${
-                !eraser && color === c ? 'ring-white' : 'ring-transparent hover:ring-white/40'
+                !eraser && color === c ? 'ring-slate-600' : 'ring-transparent hover:ring-slate-400/60'
               }`}
               style={{ backgroundColor: c }}
             />
           ))}
         </div>
-        <div className="mx-1 h-5 w-px bg-white/15" />
+        <div className="mx-1 h-5 w-px bg-slate-900/10" />
         <div className="flex items-center gap-1">
           {PEN_SIZES.map((s) => (
             <button
@@ -377,25 +419,25 @@ function WhiteboardModal() {
               onClick={() => setSize(s)}
               aria-label={`Pen size ${s}`}
               className={`flex h-6 w-6 items-center justify-center rounded-md transition ${
-                size === s ? 'bg-white/20' : 'hover:bg-white/10'
+                size === s ? 'bg-slate-900/15' : 'hover:bg-slate-900/10'
               }`}
             >
-              <span className="rounded-full bg-slate-200" style={{ width: s + 2, height: s + 2 }} />
+              <span className="rounded-full bg-slate-600" style={{ width: s + 2, height: s + 2 }} />
             </button>
           ))}
         </div>
-        <div className="mx-1 h-5 w-px bg-white/15" />
+        <div className="mx-1 h-5 w-px bg-slate-900/10" />
         <button
           onClick={() => setEraser((v) => !v)}
           className={`rounded-md px-2 py-0.5 text-[11px] transition ${
-            eraser ? 'bg-white/20 text-white' : 'text-slate-300 hover:bg-white/10'
+            eraser ? 'bg-slate-900/15 text-slate-800' : 'text-slate-500 hover:bg-slate-900/10'
           }`}
         >
           Eraser
         </button>
         <button
           onClick={clearWhiteboard}
-          className="ml-auto rounded-md px-2 py-0.5 text-[11px] text-rose-300 transition hover:bg-rose-500/20"
+          className="ml-auto rounded-md px-2 py-0.5 text-[11px] text-rose-500 transition hover:bg-rose-500/15"
         >
           Clear
         </button>
@@ -406,7 +448,7 @@ function WhiteboardModal() {
         width={BOARD_W * BOARD_SCALE}
         height={BOARD_H * BOARD_SCALE}
         style={{ width: BOARD_W, height: BOARD_H }}
-        className="touch-none rounded-xl bg-white"
+        className="touch-none rounded-xl bg-white ring-1 ring-slate-900/10"
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
@@ -444,13 +486,13 @@ function TimerModal() {
 
   const tabCls = (active: boolean) =>
     `flex-1 rounded-lg px-3 py-1 text-[12px] font-medium transition ${
-      active ? 'bg-white/20 text-white' : 'text-slate-400 hover:bg-white/10'
+      active ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:bg-slate-900/5'
     }`;
 
   return (
     <Panel title="Pomodoro Timer" width="w-[320px]">
       <div className="flex flex-col items-center gap-3 py-1">
-        <div className="flex w-full gap-1 rounded-xl bg-white/[0.06] p-1">
+        <div className="flex w-full gap-1 rounded-xl bg-slate-900/5 p-1">
           <button className={tabCls(timer.mode === 'WORK')} onClick={() => setTimerMode('WORK')}>
             Focus
           </button>
@@ -459,11 +501,11 @@ function TimerModal() {
           </button>
         </div>
 
-        <div className={`font-mono text-5xl font-bold tabular-nums ${done ? 'animate-pulse text-rose-400' : ''}`}>
+        <div className={`font-mono text-5xl font-bold tabular-nums text-slate-800 ${done ? 'animate-pulse text-rose-500' : ''}`}>
           {mm}:{ss}
         </div>
 
-        <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
+        <div className="h-1 w-full overflow-hidden rounded-full bg-slate-900/10">
           <div
             className={`h-full rounded-full transition-all ${timer.mode === 'WORK' ? 'bg-rose-400' : 'bg-emerald-400'}`}
             style={{ width: `${totalMs > 0 ? (remaining / totalMs) * 100 : 0}%` }}
@@ -476,7 +518,7 @@ function TimerModal() {
               setTimerMode(nextMode);
               startTimer();
             }}
-            className="w-full rounded-xl bg-emerald-500/80 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
+            className="w-full rounded-xl bg-emerald-500/90 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
           >
             Time's up — start {nextMode === 'WORK' ? 'focus' : 'break'}
           </button>
@@ -484,13 +526,13 @@ function TimerModal() {
           <div className="flex w-full gap-2">
             <button
               onClick={timer.isRunning ? pauseTimer : startTimer}
-              className="flex-1 rounded-xl bg-sky-500/80 py-2 text-sm font-semibold text-white transition hover:bg-sky-500"
+              className="flex-1 rounded-xl bg-sky-500/90 py-2 text-sm font-semibold text-white transition hover:bg-sky-500"
             >
               {timer.isRunning ? 'Pause' : 'Start'}
             </button>
             <button
               onClick={resetTimer}
-              className="rounded-xl bg-white/10 px-4 py-2 text-sm text-slate-300 transition hover:bg-white/20"
+              className="rounded-xl bg-slate-900/10 px-4 py-2 text-sm text-slate-600 transition hover:bg-slate-900/15"
             >
               Reset
             </button>
@@ -500,18 +542,18 @@ function TimerModal() {
         <div className="flex w-full items-center justify-between text-[11px] text-slate-400">
           <span>
             Focus{' '}
-            <button className="px-1 hover:text-white" onClick={() => setTimerDurations(timer.workMin - 5, timer.breakMin)}>−</button>
-            <span className="tabular-nums text-slate-200">{timer.workMin}m</span>
-            <button className="px-1 hover:text-white" onClick={() => setTimerDurations(timer.workMin + 5, timer.breakMin)}>+</button>
+            <button className="px-1 hover:text-slate-700" onClick={() => setTimerDurations(timer.workMin - 5, timer.breakMin)}>−</button>
+            <span className="tabular-nums text-slate-600">{timer.workMin}m</span>
+            <button className="px-1 hover:text-slate-700" onClick={() => setTimerDurations(timer.workMin + 5, timer.breakMin)}>+</button>
           </span>
           <span>
             Break{' '}
-            <button className="px-1 hover:text-white" onClick={() => setTimerDurations(timer.workMin, timer.breakMin - 1)}>−</button>
-            <span className="tabular-nums text-slate-200">{timer.breakMin}m</span>
-            <button className="px-1 hover:text-white" onClick={() => setTimerDurations(timer.workMin, timer.breakMin + 1)}>+</button>
+            <button className="px-1 hover:text-slate-700" onClick={() => setTimerDurations(timer.workMin, timer.breakMin - 1)}>−</button>
+            <span className="tabular-nums text-slate-600">{timer.breakMin}m</span>
+            <button className="px-1 hover:text-slate-700" onClick={() => setTimerDurations(timer.workMin, timer.breakMin + 1)}>+</button>
           </span>
         </div>
-        <p className="text-[10px] text-slate-500">Synced with your partner in real time.</p>
+        <p className="text-[10px] text-slate-400">Synced with your partner in real time.</p>
       </div>
     </Panel>
   );
@@ -520,6 +562,16 @@ function TimerModal() {
 /* ------------------------------------------------------------------ */
 /* Settings: role/identity switch + connection details                */
 /* ------------------------------------------------------------------ */
+
+function StatusDot({ status }: { status: string }) {
+  const cls =
+    status === 'CONNECTED'
+      ? 'bg-emerald-400'
+      : status === 'CONNECTING'
+        ? 'animate-pulse bg-amber-400'
+        : 'bg-rose-400/80';
+  return <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${cls}`} />;
+}
 
 function SettingsModal() {
   const role = useAppStore((s) => s.role);
@@ -531,11 +583,11 @@ function SettingsModal() {
       onClick={() => setRole(r)}
       className={`flex-1 rounded-xl border px-3 py-2.5 text-left transition ${
         role === r
-          ? 'border-sky-400/60 bg-sky-500/15'
-          : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.08]'
+          ? 'border-sky-500/60 bg-sky-500/10'
+          : 'border-slate-900/10 bg-white/50 hover:bg-white/80'
       }`}
     >
-      <div className="text-[13px] font-semibold">{label}</div>
+      <div className="text-[13px] font-semibold text-slate-700">{label}</div>
       <div className="mt-0.5 font-mono text-[10px] text-slate-400">{PEER_IDS[r]}</div>
     </button>
   );
@@ -551,7 +603,7 @@ function SettingsModal() {
             {roleBtn('USER_A', 'User A')}
             {roleBtn('USER_B', 'User B')}
           </div>
-          <p className="mt-1.5 text-[11px] text-slate-500">
+          <p className="mt-1.5 text-[11px] text-slate-400">
             One desk must be User A and the other User B. Switching re-registers this overlay
             under its static peer ID.
           </p>
@@ -560,15 +612,15 @@ function SettingsModal() {
           <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-400">
             Connection
           </div>
-          <div className="flex items-center gap-2 rounded-xl bg-white/[0.04] px-3 py-2 ring-1 ring-white/10">
+          <div className="flex items-center gap-2 rounded-xl bg-white/50 px-3 py-2 ring-1 ring-slate-900/10">
             <StatusDot status={status} />
-            <span>
+            <span className="text-slate-600">
               {status === 'CONNECTED' && `Linked with ${partnerOf(role) === 'USER_A' ? 'User A' : 'User B'}`}
               {status === 'CONNECTING' && 'Looking for your partner…'}
               {status === 'DISCONNECTED' && 'Offline'}
             </span>
           </div>
-          <p className="mt-1.5 text-[11px] text-slate-500">
+          <p className="mt-1.5 text-[11px] text-slate-400">
             Auto-connects whenever both overlays are open — no room codes or pairing steps.
           </p>
         </section>
@@ -602,12 +654,12 @@ function SpeechModal() {
           autoFocus
           maxLength={80}
           placeholder="Type a message…"
-          className="w-full rounded-xl bg-white/10 px-3 py-2 text-[13px] outline-none ring-1 ring-white/10 placeholder:text-slate-500 focus:ring-sky-300/50"
+          className="w-full rounded-xl bg-white/70 px-3 py-2 text-[13px] text-slate-700 outline-none ring-1 ring-slate-900/10 placeholder:text-slate-400 focus:ring-sky-400/60"
         />
         <div className="flex gap-2">
           <button
             type="submit"
-            className="flex-1 rounded-xl bg-sky-500/80 py-1.5 text-[12px] font-semibold text-white transition hover:bg-sky-500"
+            className="flex-1 rounded-xl bg-sky-500/90 py-1.5 text-[12px] font-semibold text-white transition hover:bg-sky-500"
           >
             Say it
           </button>
@@ -617,12 +669,12 @@ function SpeechModal() {
               setMyBubble('');
               setActiveModal('NONE');
             }}
-            className="rounded-xl bg-white/10 px-3 py-1.5 text-[12px] text-slate-300 transition hover:bg-white/20"
+            className="rounded-xl bg-slate-900/10 px-3 py-1.5 text-[12px] text-slate-600 transition hover:bg-slate-900/15"
           >
             Clear
           </button>
         </div>
-        <p className="text-[10px] text-slate-500">
+        <p className="text-[10px] text-slate-400">
           Appears over your character for 30 seconds — your partner sees it too.
         </p>
       </form>
@@ -631,7 +683,7 @@ function SpeechModal() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Modal layer + status bar                                           */
+/* Modal layer                                                        */
 /* ------------------------------------------------------------------ */
 
 export function ModalLayer() {
@@ -656,63 +708,6 @@ export function ModalLayer() {
       {activeModal === 'TIMER' && <TimerModal />}
       {activeModal === 'SETTINGS' && <SettingsModal />}
       {activeModal === 'SPEECH' && <SpeechModal />}
-    </div>
-  );
-}
-
-function StatusDot({ status }: { status: string }) {
-  const cls =
-    status === 'CONNECTED'
-      ? 'bg-emerald-400'
-      : status === 'CONNECTING'
-        ? 'animate-pulse bg-amber-400'
-        : 'bg-rose-400/80';
-  return <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${cls}`} />;
-}
-
-const STATUS_OPTIONS: Array<{ value: CharacterStatus; icon: string; label: string }> = [
-  { value: 'IDLE', icon: '🚶', label: 'Idle — wander around' },
-  { value: 'WORKING', icon: '💻', label: 'Working — sit at the desk' },
-  { value: 'SLEEPING', icon: '😴', label: 'Sleeping — lie on the bed' },
-];
-
-export function StatusBar() {
-  const status = useAppStore((s) => s.connectionStatus);
-  const role = useAppStore((s) => s.role);
-  const activeModal = useAppStore((s) => s.activeModal);
-  const setActiveModal = useAppStore((s) => s.setActiveModal);
-  const myStatus = useAppStore((s) => s.myStatus);
-  const setMyStatus = useAppStore((s) => s.setMyStatus);
-
-  return (
-    <div
-      data-interactive
-      className="pointer-events-auto absolute bottom-2 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-slate-900/70 px-3 py-1.5 text-[11px] text-slate-200 shadow-lg backdrop-blur-md"
-    >
-      <StatusDot status={status} />
-      <span className="font-medium">{role === 'USER_A' ? 'User A' : 'User B'}</span>
-      <span className="mx-0.5 h-3.5 w-px bg-white/15" />
-      {STATUS_OPTIONS.map((o) => (
-        <button
-          key={o.value}
-          onClick={() => setMyStatus(o.value)}
-          title={o.label}
-          aria-label={o.label}
-          className={`rounded-full px-1 text-[13px] leading-none transition ${
-            myStatus === o.value ? 'bg-white/25' : 'opacity-55 hover:opacity-100'
-          }`}
-        >
-          {o.icon}
-        </button>
-      ))}
-      <span className="mx-0.5 h-3.5 w-px bg-white/15" />
-      <button
-        onClick={() => setActiveModal(activeModal === 'SETTINGS' ? 'NONE' : 'SETTINGS')}
-        aria-label="Settings"
-        className="text-slate-400 transition hover:text-white"
-      >
-        ⚙
-      </button>
     </div>
   );
 }

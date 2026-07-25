@@ -1027,8 +1027,9 @@ function DeskChair({
   );
 }
 
-/** Pencil cup with a handful of pens/pencils leaning at odd angles. */
+/** Pencil cup with pens leaning at odd angles — opens Settings. */
 function PencilCup({ position }: { position: [number, number, number] }) {
+  const setActiveModal = useAppStore((s) => s.setActiveModal);
   const pens: Array<{ x: number; z: number; tiltX: number; tiltZ: number; h: number; color: string }> = [
     { x: 0.03, z: 0.02, tiltX: 0.1, tiltZ: 0.08, h: 0.34, color: '#e8b25c' },
     { x: -0.04, z: 0.03, tiltX: -0.06, tiltZ: -0.14, h: 0.3, color: P.orange },
@@ -1037,27 +1038,36 @@ function PencilCup({ position }: { position: [number, number, number] }) {
     { x: -0.02, z: -0.01, tiltX: 0.14, tiltZ: -0.04, h: 0.36, color: P.leafDark },
   ];
   return (
-    <group position={position}>
-      <mesh position={[0, 0.13, 0]} castShadow>
-        <cylinderGeometry args={[0.11, 0.09, 0.26, 20]} />
-        <meshStandardMaterial color={P.sage} {...CLAY} />
-      </mesh>
-      {pens.map((p, i) => (
-        <group key={i} position={[p.x, 0.22, p.z]} rotation={[p.tiltX, 0, p.tiltZ]}>
-          <mesh position={[0, p.h / 2, 0]} castShadow>
-            <cylinderGeometry args={[0.017, 0.017, p.h, 8]} />
-            <meshStandardMaterial color={p.color} roughness={0.6} />
+    <Interactive position={position} onSelect={() => setActiveModal('SETTINGS')}>
+      {(hovered) => (
+        <>
+          <mesh position={[0, 0.13, 0]} castShadow>
+            <cylinderGeometry args={[0.11, 0.09, 0.26, 20]} />
+            <meshStandardMaterial
+              color={P.sage}
+              {...CLAY}
+              emissive={hovered ? '#ffcf8a' : '#000000'}
+              emissiveIntensity={0.35}
+            />
           </mesh>
-          {/* sharpened tip on the classic pencil */}
-          {i === 0 && (
-            <mesh position={[0, p.h + 0.025, 0]}>
-              <coneGeometry args={[0.017, 0.05, 8]} />
-              <meshStandardMaterial color="#8a6b3f" roughness={0.7} />
-            </mesh>
-          )}
-        </group>
-      ))}
-    </group>
+          {pens.map((p, i) => (
+            <group key={i} position={[p.x, 0.22, p.z]} rotation={[p.tiltX, 0, p.tiltZ]}>
+              <mesh position={[0, p.h / 2, 0]} castShadow>
+                <cylinderGeometry args={[0.017, 0.017, p.h, 8]} />
+                <meshStandardMaterial color={p.color} roughness={0.6} />
+              </mesh>
+              {/* sharpened tip on the classic pencil */}
+              {i === 0 && (
+                <mesh position={[0, p.h + 0.025, 0]}>
+                  <coneGeometry args={[0.017, 0.05, 8]} />
+                  <meshStandardMaterial color="#8a6b3f" roughness={0.7} />
+                </mesh>
+              )}
+            </group>
+          ))}
+        </>
+      )}
+    </Interactive>
   );
 }
 
