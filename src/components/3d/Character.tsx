@@ -40,6 +40,40 @@ const MODELS: Record<Role, ModelSpec> = {
 useGLTF.preload(racoonUrl);
 useGLTF.preload(monkeyUrl);
 
+/**
+ * The monkey ships rigged (48 joints, no clips), so its limbs are driven
+ * procedurally: rest pose captured at load, swing applied per-frame about
+ * this bone-local axis. If a limb hinges the wrong way on a rig, flip the
+ * axis or sign here — one line, no re-export.
+ */
+const BONE_AXIS = new THREE.Vector3(1, 0, 0);
+const MONKEY_BONES = {
+  armL: 'arm_L_a_06',
+  armR: 'arm_R_a_017',
+  legL: 'leg_L_a_033',
+  legR: 'leg_R_a_037',
+  head: 'head_028',
+  tail: ['tail_a_041', 'tail_b_042', 'tail_c_043', 'tail_d_044', 'tail_e_045', 'tail_f_046'],
+};
+
+interface BoneRig {
+  armL?: THREE.Object3D;
+  armR?: THREE.Object3D;
+  legL?: THREE.Object3D;
+  legR?: THREE.Object3D;
+  head?: THREE.Object3D;
+  tail: THREE.Object3D[];
+}
+
+/** Reset to rest pose, then swing about the configured bone-local axis. */
+function swingBone(bone: THREE.Object3D | undefined, angle: number): void {
+  if (!bone) return;
+  const rest = bone.userData.restQ as THREE.Quaternion | undefined;
+  if (!rest) return;
+  bone.quaternion.copy(rest);
+  if (angle !== 0) bone.rotateOnAxis(BONE_AXIS, angle);
+}
+
 const SIT_RAISE = 0.5; // perch the model onto the chair seat
 const LIE_RAISE = 1.0; // onto the mattress top
 const TELE_OUT = 0.25;
@@ -246,6 +280,32 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     });
     return { scale, offset: [-center.x, -box.min.y, -center.z] as const };
   }, [scene, model.height]);
+
+  /** Bone handles for the rigged monkey; null for the unrigged racoon. */
+  const rig = useMemo<BoneRig | null>(() => {
+    const capture = (name: string) => {
+      const bone = scene.getObjectByName(name);
+      if (bone) bone.userData.restQ = bone.quaternion.clone();
+      return bone ?? undefined;
+    };
+    const armL = capture(MONKEY_BONES.armL);
+    if (!armL) return null; // not the rigged model
+    const tail: THREE.Object3D[] = [];
+    for (const n of MONKEY_BONES.tail) {
+      const b = capture(n);
+      if (b) tail.push(b);
+    }
+    return {
+      armL,
+      armR: capture(MONKEY_BONES.armR),
+      legL: capture(MONKEY_BONES.legL),
+      legR: capture(MONKEY_BONES.legR),
+      head: capture(MONKEY_BONES.head),
+      tail,
+    };
+  }, [scene]);
+  /** Smoothed limb angles so pose changes never snap. */
+  const limbs = useRef({ armL: 0, armR: 0, legL: 0, legR: 0, head: 0 });
 
   /**
    * The grab plane sits at the model's head-top height so the crown of
@@ -497,12 +557,13 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     root.current.quaternion.copy(qStand).slerp(LIE_Q, lieE);
     root.current.scale.setScalar(Math.max(0.001, s.scale));
 
-    /* ---------- rigid body motion (models have no rig clips) ---------- */
-    const hop = walking ? Math.abs(Math.sin(s.walkT)) * 0.07 : 0;
-    const typing = status === 'WORKING' && s.sit > 0.7 ? Math.abs(Math.sin(t * 9)) * 0.015 : 0;
+    /* ---------- body motion ---------- */
+    const working = status === 'WORKING' && s.sit > 0.7;
+    const hop = walking ? Math.abs(Math.sin(s.walkT)) * (rig ? 0.045 : 0.08) : 0;
+    const typing = working ? Math.abs(Math.sin(t * 9)) * 0.015 : 0;
     body.current.position.y = (hop + typing + Math.sin(t * 2.2) * 0.008) * (1 - lieE);
     // walk waddle / carried rocking protest
-    const waddle = walking ? Math.sin(s.walkT) * 0.08 : 0;
+    const waddle = walking ? Math.sin(s.walkT) * (rig ? 0.05 : 0.08) : 0;
     const rock = carried ? Math.sin(t * 8) * 0.14 : 0;
     body.current.rotation.z = damp(body.current.rotation.z, waddle + rock, 12);
     body.current.rotation.x = damp(
@@ -510,9 +571,52 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
       (walking ? 0.06 : 0) + (carried ? 0.12 : 0) + s.sit * -0.08,
       10
     );
-    // breathing: gentle upright, deep while asleep
+    // breathing (gentle upright, deep while asleep) + squash-and-stretch
+    // landing compression for the unrigged racoon so its gait reads alive
     const breathe = 1 + (s.lie > 0.8 ? Math.sin(t * 2) * 0.03 : 0.006 * Math.sin(t * 2.2));
-    body.current.scale.set(1, breathe, 1);
+    const squash = !rig && walking ? 1 - 0.11 * (1 - Math.abs(Math.sin(s.walkT))) : 1;
+    const jiggle = !rig && carried ? 1 + Math.sin(t * 8) * 0.04 : 1;
+    const sy = breathe * squash * jiggle;
+    const sxz = 1 + (1 - sy) * 0.55;
+    body.current.scale.set(sxz, sy, sxz);
+
+    /* ---------- skeletal limbs (rigged monkey only) ---------- */
+    if (rig) {
+      const L = limbs.current;
+      const swing = walking ? Math.sin(s.walkT) * 0.65 : 0;
+      // carried: flail; working: arms reach forward with a typing wiggle
+      const armPose = carried
+        ? 0.5 + Math.sin(t * 9) * 0.55
+        : working
+          ? -0.9 + Math.sin(t * 10) * 0.1
+          : 0;
+      const armPoseR = carried
+        ? 0.5 - Math.sin(t * 9 + 0.7) * 0.55
+        : working
+          ? -0.9 + Math.cos(t * 10 + 1) * 0.1
+          : 0;
+      const legPose = carried ? Math.sin(t * 8) * 0.5 : s.sit > 0.05 ? -1.1 * s.sit : 0;
+      const legPoseR = carried ? -Math.sin(t * 8) * 0.5 : s.sit > 0.05 ? -1.1 * s.sit : 0;
+      L.armL = damp(L.armL, walking ? -swing * 0.8 : armPose, 12);
+      L.armR = damp(L.armR, walking ? swing * 0.8 : armPoseR, 12);
+      L.legL = damp(L.legL, walking ? swing : legPose, 12);
+      L.legR = damp(L.legR, walking ? -swing : legPoseR, 12);
+      L.head = damp(
+        L.head,
+        walking ? Math.sin(s.walkT * 2) * 0.05 : status === 'IDLE' && !carried ? Math.sin(t * 0.6) * 0.25 : 0,
+        8
+      );
+      swingBone(rig.armL, L.armL);
+      swingBone(rig.armR, L.armR);
+      swingBone(rig.legL, L.legL);
+      swingBone(rig.legR, L.legR);
+      swingBone(rig.head, L.head);
+      // tail: a travelling wave, calmer when asleep
+      const tailAmp = s.lie > 0.8 ? 0.05 : carried ? 0.22 : 0.12;
+      rig.tail.forEach((bone, i) => {
+        swingBone(bone, Math.sin(t * 2.6 + i * 0.55) * tailAmp);
+      });
+    }
 
     /* ---------- puffs of smoke ---------- */
     puffs.current.forEach((p, i) => {
