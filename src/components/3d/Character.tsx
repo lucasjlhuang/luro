@@ -122,6 +122,31 @@ const LIE_Q = new THREE.Quaternion().setFromRotationMatrix(
 );
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 const TMP_VEC = new THREE.Vector3();
+const TMP_BOX = new THREE.Box3();
+
+/**
+ * World bounds with skinning applied. Box3.setFromObject measures a
+ * SkinnedMesh's *unskinned* base geometry, which on game rigs can be
+ * ~100x the size the skeleton actually renders it at — auto-fit from
+ * that draws the model microscopic. SkinnedMesh.computeBoundingBox is
+ * bone-aware, so union those instead.
+ */
+function computeSceneBox(scene: THREE.Object3D): THREE.Box3 {
+  scene.updateMatrixWorld(true);
+  const box = new THREE.Box3();
+  box.makeEmpty();
+  scene.traverse((obj) => {
+    if (obj instanceof THREE.SkinnedMesh) {
+      obj.computeBoundingBox();
+      if (obj.boundingBox) box.union(TMP_BOX.copy(obj.boundingBox).applyMatrix4(obj.matrixWorld));
+    } else if (obj instanceof THREE.Mesh) {
+      obj.geometry.computeBoundingBox();
+      const gb = obj.geometry.boundingBox;
+      if (gb) box.union(TMP_BOX.copy(gb).applyMatrix4(obj.matrixWorld));
+    }
+  });
+  return box;
+}
 
 function dampAngle(current: number, target: number, lambda: number, dt: number): number {
   let d = target - current;
@@ -267,11 +292,10 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
   /* ---------------- model loading & normalisation ---------------- */
   const { scene } = useGLTF(model.url);
   const fitted = useMemo(() => {
-    scene.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(scene);
+    const box = computeSceneBox(scene);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
-    const scale = model.height / Math.max(size.y, 0.001);
+    const scale = model.height / Math.max(size.y, 1e-6);
     scene.traverse((obj) => {
       if (obj instanceof THREE.Mesh) {
         obj.castShadow = true;
