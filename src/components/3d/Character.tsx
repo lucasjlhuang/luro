@@ -28,23 +28,89 @@ const MAT = { roughness: 0.85, metalness: 0.05 };
 const LOOKS = {
   USER_A: {
     girl: false,
-    shirt: '#4fa3c7',
-    sleeve: '#4fa3c7',
-    legs: '#46536b',
+    shirt: '#a9d6ea', // light blue tee
+    sleeve: '#a9d6ea',
+    legs: '#2e2c2a', // black cargo pants
     shoes: '#4a3a2a',
-    hair: '#6b4a2c',
+    hair: '#3b2a1d', // dark brown, worn as a mullet
     accent: '#f2b134',
   },
   USER_B: {
     girl: true,
-    shirt: '#ef8069',
-    sleeve: '#ef8069',
+    shirt: '#cfe8b5', // light green (dress body is the floral texture)
+    sleeve: '#cfe8b5',
     legs: SKIN,
     shoes: '#f7f0e2',
-    hair: '#54341f',
-    accent: '#ffd166',
+    hair: '#a8815a', // light brown
+    accent: '#f28bb4', // pink hair flower
   },
 } as const;
+
+const GLASSES = '#2f2a26';
+const FRECKLE = '#c98d5f';
+const FRECKLES: Array<[number, number]> = [
+  [-0.16, -0.075],
+  [-0.11, -0.09],
+  [-0.06, -0.075],
+  [0.06, -0.075],
+  [0.11, -0.09],
+  [0.16, -0.075],
+];
+
+/** Light-green floral print for the girl's dress. */
+let floralTex: THREE.CanvasTexture | null = null;
+function getFloral(): THREE.CanvasTexture {
+  if (floralTex) return floralTex;
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 128;
+  const ctx = c.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = '#cfe8b5';
+    ctx.fillRect(0, 0, 128, 128);
+    const flowers: Array<[number, number, number]> = [
+      [22, 24, 7],
+      [86, 18, 6],
+      [58, 56, 8],
+      [18, 88, 6],
+      [96, 78, 7],
+      [58, 108, 6],
+      [112, 44, 5],
+    ];
+    for (const [fx, fy, r] of flowers) {
+      ctx.fillStyle = '#f5a8c0';
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.arc(fx + Math.cos(a) * r, fy + Math.sin(a) * r, r * 0.72, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#ffd166';
+      ctx.beginPath();
+      ctx.arc(fx, fy, r * 0.55, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    for (const [dx, dy] of [
+      [40, 20],
+      [10, 55],
+      [76, 40],
+      [40, 86],
+      [104, 104],
+      [118, 12],
+    ]) {
+      ctx.beginPath();
+      ctx.arc(dx, dy, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  floralTex = new THREE.CanvasTexture(c);
+  floralTex.wrapS = THREE.RepeatWrapping;
+  floralTex.wrapT = THREE.RepeatWrapping;
+  floralTex.repeat.set(2, 1.5);
+  floralTex.anisotropy = 4;
+  return floralTex;
+}
 
 const SIT_RAISE = 0.35; // hips onto the chair seat (~0.63 after 1.12x scale)
 const LIE_RAISE = 1.0; // body onto the mattress top (~0.86) plus half-thickness
@@ -595,6 +661,16 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
                 <cylinderGeometry args={[0.078, 0.072, 0.22, 12]} />
                 <meshStandardMaterial color={look.legs} {...MAT} />
               </mesh>
+              {/* cargo pocket on the outer thigh */}
+              {!look.girl && (
+                <RoundedBox
+                  args={[0.045, 0.075, 0.09]}
+                  radius={0.015}
+                  position={[side * 0.085, -0.1, 0.015]}
+                >
+                  <meshStandardMaterial color="#3c3936" {...MAT} />
+                </RoundedBox>
+              )}
               <mesh position={[0, -0.23, 0.04]} scale={[1, 0.9, 1.15]} castShadow>
                 <sphereGeometry args={[0.088, 14, 14]} />
                 <meshStandardMaterial color={look.shoes} {...MAT} />
@@ -602,10 +678,14 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
             </group>
           ))}
 
-          {/* round body */}
+          {/* round body: plain tee for the boy, floral dress for the girl */}
           <group ref={torso} position={[0, 0.5, 0]}>
             <RoundedBox args={[0.44, 0.42, 0.34]} radius={0.17} castShadow>
-              <meshStandardMaterial color={look.shirt} {...MAT} />
+              {look.girl ? (
+                <meshStandardMaterial map={getFloral()} {...MAT} />
+              ) : (
+                <meshStandardMaterial color={look.shirt} {...MAT} />
+              )}
             </RoundedBox>
           </group>
 
@@ -613,7 +693,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
           {look.girl && (
             <mesh position={[0, 0.36, 0]} castShadow>
               <cylinderGeometry args={[0.21, 0.36, 0.3, 24, 1, true]} />
-              <meshStandardMaterial color={look.shirt} side={THREE.DoubleSide} {...MAT} />
+              <meshStandardMaterial map={getFloral()} side={THREE.DoubleSide} {...MAT} />
             </mesh>
           )}
 
@@ -684,13 +764,13 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
                   ))}
                   <mesh position={[0, 0, 0.02]}>
                     <sphereGeometry args={[0.028, 8, 8]} />
-                    <meshStandardMaterial color="#fff3d6" {...MAT} />
+                    <meshStandardMaterial color="#ffd166" {...MAT} />
                   </mesh>
                 </group>
               </>
             ) : (
               <>
-                {/* short cap with a swept fringe and a cowlick */}
+                {/* mullet: short crown + swept fringe, long in the back */}
                 <mesh position={[0, 0.05, -0.02]} scale={[1.04, 1, 1.05]} castShadow>
                   <sphereGeometry args={[0.34, 24, 24, 0, Math.PI * 2, 0, Math.PI / 2.15]} />
                   <meshStandardMaterial color={look.hair} {...MAT} />
@@ -704,15 +784,50 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
                   <sphereGeometry args={[0.2, 16, 16]} />
                   <meshStandardMaterial color={look.hair} {...MAT} />
                 </mesh>
-                <mesh
-                  position={[0.11, 0.33, -0.03]}
-                  rotation={[0.35, 0, -0.6]}
-                  scale={[0.5, 1, 0.5]}
-                  castShadow
-                >
-                  <sphereGeometry args={[0.1, 10, 10]} />
+                <mesh position={[0, -0.16, -0.21]} scale={[0.85, 1.35, 0.45]} castShadow>
+                  <sphereGeometry args={[0.22, 14, 14]} />
                   <meshStandardMaterial color={look.hair} {...MAT} />
                 </mesh>
+                {/* rectangular glasses: framed lenses, bridge, temple arms */}
+                <group position={[0, 0.02, 0.325]}>
+                  {[-1, 1].map((side) => (
+                    <group key={side} position={[side * 0.12, 0, 0]}>
+                      {[0.06, -0.06].map((y) => (
+                        <mesh key={y} position={[0, y, 0]}>
+                          <boxGeometry args={[0.14, 0.014, 0.014]} />
+                          <meshStandardMaterial color={GLASSES} roughness={0.4} />
+                        </mesh>
+                      ))}
+                      {[-0.063, 0.063].map((x) => (
+                        <mesh key={x} position={[x, 0, 0]}>
+                          <boxGeometry args={[0.014, 0.134, 0.014]} />
+                          <meshStandardMaterial color={GLASSES} roughness={0.4} />
+                        </mesh>
+                      ))}
+                    </group>
+                  ))}
+                  <mesh position={[0, 0.035, 0]}>
+                    <boxGeometry args={[0.1, 0.012, 0.013]} />
+                    <meshStandardMaterial color={GLASSES} roughness={0.4} />
+                  </mesh>
+                  {[-1, 1].map((side) => (
+                    <mesh
+                      key={`arm${side}`}
+                      position={[side * 0.24, 0.01, -0.16]}
+                      rotation={[Math.PI / 2, 0, side * 0.25]}
+                    >
+                      <cylinderGeometry args={[0.009, 0.009, 0.3, 8]} />
+                      <meshStandardMaterial color={GLASSES} roughness={0.4} />
+                    </mesh>
+                  ))}
+                </group>
+                {/* freckles across the cheeks and nose */}
+                {FRECKLES.map(([fx, fy], i) => (
+                  <mesh key={i} position={[fx, fy, 0.3]}>
+                    <sphereGeometry args={[0.011, 6, 6]} />
+                    <meshStandardMaterial color={FRECKLE} roughness={0.8} />
+                  </mesh>
+                ))}
               </>
             )}
 
@@ -720,7 +835,8 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
             <group ref={eyes} position={[0, 0.0, 0.29]}>
               {[-0.12, 0.12].map((x) => (
                 <group key={x} position={[x, 0.02, 0]}>
-                  <mesh scale={[0.8, 1.3, 0.5]}>
+                  {/* boy's eyes sit a touch smaller so the frames enclose them */}
+                  <mesh scale={look.girl ? [0.8, 1.3, 0.5] : [0.75, 1.05, 0.5]}>
                     <sphereGeometry args={[0.062, 16, 16]} />
                     <meshStandardMaterial color="#2c2320" roughness={0.3} />
                   </mesh>
