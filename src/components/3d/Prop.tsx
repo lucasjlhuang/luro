@@ -2,6 +2,31 @@ import { useMemo } from 'react';
 import * as THREE from 'three';
 import { useGLTF } from '@react-three/drei';
 
+const TMP_BOX = new THREE.Box3();
+
+/**
+ * Bounds that respect GPU instancing: optimized GLBs often pack repeated
+ * parts as InstancedMesh, whose geometry bbox covers only ONE instance —
+ * measuring (or letting the frustum culler measure) with that makes the
+ * model mis-fit or vanish entirely.
+ */
+function computeBox(scene: THREE.Object3D): THREE.Box3 {
+  scene.updateMatrixWorld(true);
+  const box = new THREE.Box3();
+  box.makeEmpty();
+  scene.traverse((obj) => {
+    if (obj instanceof THREE.InstancedMesh) {
+      obj.computeBoundingBox(); // instance-aware
+      if (obj.boundingBox) box.union(TMP_BOX.copy(obj.boundingBox).applyMatrix4(obj.matrixWorld));
+    } else if (obj instanceof THREE.Mesh) {
+      obj.geometry.computeBoundingBox();
+      const gb = obj.geometry.boundingBox;
+      if (gb) box.union(TMP_BOX.copy(gb).applyMatrix4(obj.matrixWorld));
+    }
+  });
+  return box;
+}
+
 /**
  * A static decor model: loads a GLB, auto-fits it to a target size along
  * one axis, grounds its base at the given position, and casts shadows.
@@ -14,6 +39,8 @@ export default function Prop({
   fitAxis = 'y',
   fitSize,
   ground = true,
+  envIntensity = 1.4,
+  matte = false,
 }: {
   url: string;
   position: [number, number, number];
@@ -23,23 +50,31 @@ export default function Prop({
   fitSize: number;
   /** Sit the model's base at position.y (true) or centre it there. */
   ground?: boolean;
+  /** Environment-light pickup; raise for dark metallic imports. */
+  envIntensity?: number;
+  /** Force fully rough/non-metal — for photo scans whose light is baked in. */
+  matte?: boolean;
 }) {
   const { scene } = useGLTF(url);
   const fitted = useMemo(() => {
-    scene.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(scene);
+    const box = computeBox(scene);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
     const scale = fitSize / Math.max(size[fitAxis], 1e-6);
     scene.traverse((obj) => {
       if (obj instanceof THREE.Mesh) {
         obj.castShadow = true;
-        // Imported PBR materials lean hard on environment light — give
-        // them a boost so they sit in the room's brightness range.
+        // Instanced meshes would be culled by their single-instance
+        // bounds; small props are cheap to just always draw.
+        obj.frustumCulled = false;
         const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
         for (const mat of mats) {
           if (mat instanceof THREE.MeshStandardMaterial) {
-            mat.envMapIntensity = 1.4;
+            mat.envMapIntensity = envIntensity;
+            if (matte) {
+              mat.roughness = 1;
+              mat.metalness = 0;
+            }
           }
         }
       }
@@ -48,7 +83,7 @@ export default function Prop({
       scale,
       offset: [-center.x, ground ? -box.min.y : -center.y, -center.z] as const,
     };
-  }, [scene, fitAxis, fitSize, ground]);
+  }, [scene, fitAxis, fitSize, ground, envIntensity, matte]);
 
   return (
     <group position={position} rotation={[0, rotationY, 0]} scale={fitted.scale}>

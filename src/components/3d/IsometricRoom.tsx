@@ -937,6 +937,8 @@ function Bed() {
         position={[-1.0, 0.84, -0.7]}
         rotationY={0.85 + (200 * Math.PI) / 180}
         fitSize={0.72}
+        matte
+        envIntensity={0.7}
       />
     </group>
   );
@@ -1243,7 +1245,13 @@ export default function IsometricRoom() {
             front-left, space marine standing guard by the rug's corner */}
         <Prop url={pokemonCardsUrl} position={[-1.0, 1.21, -1.72]} rotationY={0.4} fitAxis="x" fitSize={0.3} />
         <Prop url={cardPacksUrl} position={[-0.55, 1.21, -1.72]} rotationY={0.2} fitAxis="x" fitSize={0.3} />
-        <Prop url={spaceMarineUrl} position={[2.2, 0, 2.2]} rotationY={0.8} fitSize={0.51} />
+        <Prop
+          url={spaceMarineUrl}
+          position={[2.55, 0.07, 2.55]}
+          rotationY={0.8}
+          fitSize={0.51}
+          envIntensity={2.6}
+        />
         {/* Chairs enlarged to stay proportionate to the now-smaller desk. */}
         <DeskChair position={[0.62, 0, -1.2]} scale={1.12} />
         <DeskChair position={[-0.42, 0, -1.2]} scale={1.12} />
