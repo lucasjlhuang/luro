@@ -927,12 +927,13 @@ function Bed() {
       <StarPillow position={[-1.38, 1.16, -0.6]} rotation={[-1.4, 0, 0.25]} />
       {/* shirt tossed on the bed's near-left corner */}
       <Shirt position={[1.2, 0.91, 0.85]} rotation={[0.02, 0.7, -0.03]} />
-      {/* the real Djungelskog, propped against the pillows
-          (+200° so the scan faces into the room) */}
+      {/* the real Djungelskog, propped on the bed
+          (+200° to face the room, +75° more to the left; nudged
+          25px right + 25px down in screen space = +0.79 world x) */}
       <Prop
         url={djungelskogUrl}
-        position={[-1.0, 0.84, -0.7]}
-        rotationY={0.85 + (200 * Math.PI) / 180}
+        position={[-0.21, 0.84, -0.7]}
+        rotationY={0.85 + (275 * Math.PI) / 180}
         fitSize={0.72}
         matte
         envIntensity={0.7}
