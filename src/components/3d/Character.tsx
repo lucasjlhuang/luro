@@ -116,12 +116,12 @@ function BubbleEditor({ onClose }: { onClose: () => void }) {
     const ctx = getMeasureCtx();
     if (!ctx) return 137;
     ctx.font = fontRef.current;
-    return Math.min(160, Math.max(24, ctx.measureText(text).width + 6));
+    return Math.min(160, Math.max(14, ctx.measureText(text).width + 6));
   };
 
-  // Resting: wide enough for the hint. Focused: collapse to the caret,
-  // then track the text as it grows.
-  const inputW = focused || draft ? (draft ? textW : 24) : 137;
+  // Resting: wide enough for the hint. Focused & empty: the tightest
+  // bubble that fits a centred caret. Typing: track the text.
+  const inputW = focused || draft ? (draft ? textW : 10) : 137;
 
   return (
     <div data-interactive style={{ ...BUBBLE_STYLE, ...(focused || draft ? {} : { minWidth: 155 }) }}>
@@ -163,6 +163,8 @@ function BubbleEditor({ onClose }: { onClose: () => void }) {
         className="placeholder:text-[#b0ada6]"
         style={{
           width: inputW,
+          // Empty: centre the lone caret. Typing: normal left flow.
+          textAlign: draft ? 'left' : 'center',
           transition: 'width 0.18s cubic-bezier(0.2, 0, 0, 1)',
           background: 'transparent',
           outline: 'none',
