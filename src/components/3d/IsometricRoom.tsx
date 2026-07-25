@@ -894,27 +894,44 @@ function Shirt({
   position: [number, number, number];
   rotation: [number, number, number];
 }) {
+  // Dark navy / dark purple stripes running across the shirt.
+  const stripes = useMemo(() => {
+    const c = document.createElement('canvas');
+    c.width = 64;
+    c.height = 64;
+    const ctx = c.getContext('2d');
+    if (ctx) {
+      for (let y = 0; y < 64; y += 8) {
+        ctx.fillStyle = (y / 8) % 2 === 0 ? '#232f4e' : '#4a3260';
+        ctx.fillRect(0, y, 64, 8);
+      }
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.anisotropy = 4;
+    return t;
+  }, []);
+
   return (
     <group position={position} rotation={rotation}>
       {/* torso, shoulders toward -z */}
       <RoundedBox args={[0.58, 0.06, 0.68]} radius={0.03} castShadow>
-        <meshStandardMaterial color={P.orangeSoft} {...CLAY} />
+        <meshStandardMaterial map={stripes} {...CLAY} />
       </RoundedBox>
       {/* sleeves */}
       <RoundedBox args={[0.24, 0.05, 0.22]} radius={0.025} position={[-0.35, 0, -0.2]} rotation={[0, 0.5, 0]}>
-        <meshStandardMaterial color={P.orangeSoft} {...CLAY} />
+        <meshStandardMaterial map={stripes} {...CLAY} />
       </RoundedBox>
       <RoundedBox args={[0.24, 0.05, 0.22]} radius={0.025} position={[0.35, 0, -0.24]} rotation={[0, -0.4, 0]}>
-        <meshStandardMaterial color={P.orangeSoft} {...CLAY} />
+        <meshStandardMaterial map={stripes} {...CLAY} />
       </RoundedBox>
       {/* collar */}
       <mesh position={[0, 0.035, -0.26]} rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[0.09, 0.024, 8, 20]} />
-        <meshStandardMaterial color={P.orange} {...CLAY} />
+        <meshStandardMaterial color="#232f4e" {...CLAY} />
       </mesh>
       {/* crumpled fold */}
       <RoundedBox args={[0.3, 0.05, 0.26]} radius={0.025} position={[0.08, 0.045, 0.12]} rotation={[0, -0.35, 0]}>
-        <meshStandardMaterial color={P.orangeSoft} {...CLAY} />
+        <meshStandardMaterial map={stripes} {...CLAY} />
       </RoundedBox>
     </group>
   );
