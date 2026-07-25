@@ -1,12 +1,12 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { useFrame, useThree } from '@react-three/fiber';
+import { ThreeEvent, useFrame, useThree } from '@react-three/fiber';
 import { RoundedBox } from '@react-three/drei';
 import { useAppStore } from '../../store/useAppStore';
-import { registerHitTest } from '../../lib/hitTest';
-import { startWindowDrag } from '../../lib/tauri';
+import { registerHitTest, setForceInteractive } from '../../lib/hitTest';
 import { renderStrokes } from '../../lib/strokes';
-import { CURSOR, CursorSpec, lockCursorUntilRelease, setCursor } from '../../lib/cursors';
+import { panBy, savePan } from '../../lib/pan';
+import { CURSOR, CursorSpec, lockCursor, setCursor, unlockCursor } from '../../lib/cursors';
 import Character from './Character';
 
 /* ------------------------------------------------------------------ */
@@ -49,7 +49,7 @@ interface InteractiveProps {
   scaleAmount?: number;
   cursor?: CursorSpec;
   onSelect?: () => void;
-  onDragStart?: () => void;
+  onDragStart?: (e: ThreeEvent<PointerEvent>) => void;
   children: (hovered: boolean) => ReactNode;
 }
 
@@ -98,7 +98,7 @@ function Interactive({
       onPointerDown={(e) => {
         if (onDragStart && e.button === 0) {
           e.stopPropagation();
-          onDragStart();
+          onDragStart(e);
         }
       }}
     >
@@ -200,9 +200,28 @@ function FloorPlatform() {
     <Interactive
       scaleAmount={1.008}
       cursor={CURSOR.open}
-      onDragStart={() => {
-        lockCursorUntilRelease(CURSOR.grab, () => setCursor(CURSOR.open));
-        void startWindowDrag();
+      onDragStart={(e) => {
+        // Pan the room within the screen-sized window (the window
+        // itself no longer moves).
+        setForceInteractive(true);
+        lockCursor(CURSOR.grab);
+        let lastX = e.clientX;
+        let lastY = e.clientY;
+        const onMove = (ev: PointerEvent) => {
+          panBy(ev.clientX - lastX, ev.clientY - lastY);
+          lastX = ev.clientX;
+          lastY = ev.clientY;
+        };
+        const onUp = () => {
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+          setForceInteractive(false);
+          unlockCursor();
+          setCursor(CURSOR.open);
+          savePan();
+        };
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
       }}
     >
       {(hovered) => (

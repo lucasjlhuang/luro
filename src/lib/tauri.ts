@@ -20,14 +20,24 @@ export async function setClickThrough(ignore: boolean): Promise<void> {
   }
 }
 
-/** Begin a native window drag (used by the rug / floor mesh). */
-export async function startWindowDrag(): Promise<void> {
+/**
+ * Grow the window to cover the current monitor. The window is
+ * transparent and click-through on empty pixels, so this is invisible —
+ * it just gives panels the whole screen to roam. Programmatic setSize
+ * works even with resizable: false.
+ */
+export async function expandWindowToScreen(): Promise<void> {
   if (!isTauri) return;
   try {
-    const { getCurrentWindow } = await import('@tauri-apps/api/window');
-    await getCurrentWindow().startDragging();
+    const { getCurrentWindow, currentMonitor } = await import('@tauri-apps/api/window');
+    const { PhysicalPosition, PhysicalSize } = await import('@tauri-apps/api/dpi');
+    const win = getCurrentWindow();
+    const monitor = await currentMonitor();
+    if (!monitor) return;
+    await win.setPosition(new PhysicalPosition(monitor.position.x, monitor.position.y));
+    await win.setSize(new PhysicalSize(monitor.size.width, monitor.size.height));
   } catch {
-    /* dragging is best-effort */
+    /* stay at the configured size */
   }
 }
 

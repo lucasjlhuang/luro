@@ -17,6 +17,7 @@ import {
 import { renderStrokes } from '../../lib/strokes';
 import { CURSOR, lockCursor, setCursor, unlockCursor } from '../../lib/cursors';
 import { setForceInteractive } from '../../lib/hitTest';
+import { getPan } from '../../lib/pan';
 
 /* ------------------------------------------------------------------ */
 /* Shared glass panel: white glassmorphism, draggable by its header.  */
@@ -35,7 +36,9 @@ function Panel({
   children: ReactNode;
 }) {
   const setActiveModal = useAppStore((s) => s.setActiveModal);
-  const [pos, setPos] = useState(() => panelPositions.get(title) ?? { x: 0, y: 0 });
+  // First open lands beside the room (wherever it's panned); after
+  // that, each panel remembers where the user dragged it.
+  const [pos, setPos] = useState(() => panelPositions.get(title) ?? { ...getPan() });
 
   const startDrag = (e: ReactPointerEvent) => {
     if (e.button !== 0) return;
