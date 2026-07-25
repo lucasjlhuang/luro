@@ -88,6 +88,8 @@ function BubbleView({ text }: { text: string }) {
 }
 
 /** Editable speech bubble that floats over the villager's head. */
+const HINT = 'Say something…';
+
 /** Shared 2D context for synchronous text measurement. */
 let measureCtx: CanvasRenderingContext2D | null = null;
 function getMeasureCtx(): CanvasRenderingContext2D | null {
@@ -106,25 +108,29 @@ function BubbleEditor({ onClose }: { onClose: () => void }) {
   // width updates in the same frame as the keystroke (no catch-up jank).
   const inputRef = useRef<HTMLInputElement | null>(null);
   const fontRef = useRef('12px sans-serif');
+  const [hintW, setHintW] = useState(90);
   useEffect(() => {
     if (!inputRef.current) return;
     const cs = getComputedStyle(inputRef.current);
     fontRef.current =
       cs.font || `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    // Size the resting bubble exactly around the hint text.
+    setHintW(widthFor(HINT));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const widthFor = (text: string): number => {
     const ctx = getMeasureCtx();
-    if (!ctx) return 137;
+    if (!ctx) return 90;
     ctx.font = fontRef.current;
     return Math.min(160, Math.max(14, ctx.measureText(text).width + 6));
   };
 
-  // Resting: wide enough for the hint. Focused & empty: the tightest
-  // bubble that fits a centred caret. Typing: track the text.
-  const inputW = focused || draft ? (draft ? textW : 10) : 137;
+  // Resting: hugging the hint. Focused & empty: the tightest bubble
+  // that fits a centred caret. Typing: track the text.
+  const inputW = focused || draft ? (draft ? textW : 10) : hintW;
 
   return (
-    <div data-interactive style={{ ...BUBBLE_STYLE, ...(focused || draft ? {} : { minWidth: 155 }) }}>
+    <div data-interactive style={BUBBLE_STYLE}>
       <button
         onClick={onClose}
         aria-label="Close"
@@ -159,7 +165,7 @@ function BubbleEditor({ onClose }: { onClose: () => void }) {
           }
         }}
         // Hint shows until the user clicks in; caret only appears then.
-        placeholder={focused ? '' : 'Say something…'}
+        placeholder={focused ? '' : HINT}
         className="placeholder:text-[#b0ada6]"
         style={{
           width: inputW,
