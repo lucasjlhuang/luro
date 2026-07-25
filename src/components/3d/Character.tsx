@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { ThreeEvent, useFrame } from '@react-three/fiber';
-import { Html, RoundedBox } from '@react-three/drei';
+import { Html, Outlines } from '@react-three/drei';
 import { CharacterStatus, CharPos, partnerOf, useAppStore } from '../../store/useAppStore';
 import { setForceInteractive } from '../../lib/hitTest';
 import { CURSOR, lockCursor, setCursor, unlockCursor } from '../../lib/cursors';
@@ -22,7 +22,6 @@ import { CURSOR, lockCursor, setCursor, unlockCursor } from '../../lib/cursors';
 
 const WALK_SPEED = 1.05;
 const SKIN = '#f6e0c0';
-const MAT = { roughness: 0.85, metalness: 0.05 };
 
 /** Drop zones shown while carrying the villager: bed and both chairs. */
 const CHAIR_XS = [0.62, -0.42];
@@ -207,15 +206,172 @@ const LOOKS = {
 } as const;
 
 const GLASSES = '#2f2a26';
-const FRECKLE = '#c98d5f';
-const FRECKLES: Array<[number, number]> = [
-  [-0.16, -0.075],
-  [-0.11, -0.09],
-  [-0.06, -0.075],
-  [0.06, -0.075],
-  [0.11, -0.09],
-  [0.16, -0.075],
-];
+const OUTLINE = '#463228';
+const OUTLINE_W = 0.02;
+
+/* ------------------------------------------------------------------ */
+/* Toon look: 3-step shading ramp, cached toon materials, and painted  */
+/* face textures (the Animal Crossing trick — faces are art, not      */
+/* geometry). Blinking swaps the whole face texture.                  */
+/* ------------------------------------------------------------------ */
+
+let ramp: THREE.DataTexture | null = null;
+function getRamp(): THREE.DataTexture {
+  if (!ramp) {
+    ramp = new THREE.DataTexture(new Uint8Array([135, 210, 255]), 3, 1, THREE.RedFormat);
+    ramp.minFilter = THREE.NearestFilter;
+    ramp.magFilter = THREE.NearestFilter;
+    ramp.needsUpdate = true;
+  }
+  return ramp;
+}
+
+const toonCache = new Map<string, THREE.MeshToonMaterial>();
+function toon(color: string): THREE.MeshToonMaterial {
+  let mat = toonCache.get(color);
+  if (!mat) {
+    mat = new THREE.MeshToonMaterial({ color, gradientMap: getRamp() });
+    toonCache.set(color, mat);
+  }
+  return mat;
+}
+
+/**
+ * Full head texture: skin base with the face painted at the +z pole of
+ * the sphere's UV layout (u = 0.25). Two frames per character (eyes
+ * open / closed) drive blinking and sleeping.
+ */
+const faceCache = new Map<string, THREE.CanvasTexture>();
+function getFace(girl: boolean, closed: boolean): THREE.CanvasTexture {
+  const key = `${girl}-${closed}`;
+  const cached = faceCache.get(key);
+  if (cached) return cached;
+
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 512;
+  const ctx = c.getContext('2d');
+  const cx = 128; // u = 0.25 faces +z
+  const eyeY = 250;
+  if (ctx) {
+    ctx.fillStyle = SKIN;
+    ctx.fillRect(0, 0, 512, 512);
+
+    if (!closed) {
+      for (const side of [-1, 1]) {
+        const ex = cx + side * 30;
+        ctx.fillStyle = '#2b211c';
+        ctx.beginPath();
+        ctx.ellipse(ex, eyeY, 13, 21, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.ellipse(ex + 4, eyeY - 7, 4.5, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        if (girl) {
+          ctx.strokeStyle = '#2b211c';
+          ctx.lineWidth = 3.5;
+          ctx.lineCap = 'round';
+          for (const lash of [0.35, 0.75]) {
+            ctx.beginPath();
+            ctx.moveTo(ex + side * 11, eyeY - 14 - lash * 6);
+            ctx.lineTo(ex + side * (17 + lash * 4), eyeY - 18 - lash * 8);
+            ctx.stroke();
+          }
+        }
+      }
+    } else {
+      ctx.strokeStyle = '#2b211c';
+      ctx.lineWidth = 5;
+      ctx.lineCap = 'round';
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.arc(cx + side * 30, eyeY - 4, 12, 0.15 * Math.PI, 0.85 * Math.PI);
+        ctx.stroke();
+      }
+    }
+
+    // blush
+    ctx.fillStyle = girl ? 'rgba(244,143,160,0.55)' : 'rgba(240,160,127,0.4)';
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(cx + side * 62, eyeY + 34, 17, 11, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // freckles (boy)
+    if (!girl) {
+      ctx.fillStyle = 'rgba(160,110,70,0.6)';
+      for (const [fx, fy] of [
+        [-44, 26],
+        [-32, 34],
+        [-20, 27],
+        [20, 27],
+        [32, 34],
+        [44, 26],
+      ]) {
+        ctx.beginPath();
+        ctx.arc(cx + fx, eyeY + fy, 2.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    // nose + mouth
+    ctx.fillStyle = 'rgba(190,140,95,0.9)';
+    ctx.beginPath();
+    ctx.ellipse(cx, eyeY + 22, 4.5, 3.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#7a4a3a';
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(cx, eyeY + 40, 9, 0.2 * Math.PI, 0.8 * Math.PI);
+    ctx.stroke();
+  }
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  faceCache.set(key, tex);
+  return tex;
+}
+
+/* One-piece lathe bodies: teardrop tee for the boy, flared dress for
+   the girl — no more intersecting-primitive seams. */
+let boyBodyGeo: THREE.LatheGeometry | null = null;
+function getBoyBody(): THREE.LatheGeometry {
+  if (!boyBodyGeo) {
+    boyBodyGeo = new THREE.LatheGeometry(
+      [
+        [0.001, 0],
+        [0.2, 0.01],
+        [0.235, 0.13],
+        [0.21, 0.28],
+        [0.135, 0.42],
+        [0.1, 0.47],
+      ].map(([x, y]) => new THREE.Vector2(x, y)),
+      24
+    );
+  }
+  return boyBodyGeo;
+}
+
+let girlBodyGeo: THREE.LatheGeometry | null = null;
+function getGirlBody(): THREE.LatheGeometry {
+  if (!girlBodyGeo) {
+    girlBodyGeo = new THREE.LatheGeometry(
+      [
+        [0.001, 0],
+        [0.27, 0.01],
+        [0.285, 0.05],
+        [0.19, 0.22],
+        [0.14, 0.34],
+        [0.1, 0.42],
+        [0.085, 0.47],
+      ].map(([x, y]) => new THREE.Vector2(x, y)),
+      24
+    );
+  }
+  return girlBodyGeo;
+}
 
 /** Light-green floral print for the girl's dress. */
 let floralTex: THREE.CanvasTexture | null = null;
@@ -407,7 +563,18 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
   const armR = useRef<THREE.Group>(null!);
   const legL = useRef<THREE.Group>(null!);
   const legR = useRef<THREE.Group>(null!);
-  const eyes = useRef<THREE.Group>(null!);
+  // Head material owns the painted face; blink = texture swap.
+  const headMat = useMemo(
+    () => new THREE.MeshToonMaterial({ map: getFace(look.girl, false), gradientMap: getRamp() }),
+    [look.girl]
+  );
+  const dressMat = useMemo(
+    () =>
+      look.girl
+        ? new THREE.MeshToonMaterial({ map: getFloral(), gradientMap: getRamp() })
+        : null,
+    [look.girl]
+  );
   const zzz = useRef<THREE.Mesh>(null!);
   const zzzMat = useRef<THREE.MeshBasicMaterial>(null!);
 
@@ -719,7 +886,8 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
       !walking && status === 'IDLE' && !s.dragging ? Math.sin(t * 0.6) * 0.5 : 0,
       6
     );
-    eyes.current.scale.y = s.lie > 0.5 ? 0.1 : t % 3.4 < 0.12 ? 0.15 : 1;
+    // Blink (and sleep) by swapping the painted face texture.
+    headMat.map = getFace(look.girl, s.lie > 0.5 || t % 3.4 < 0.12);
 
     /* ---------- puffs of smoke ---------- */
     puffs.current.forEach((p, i) => {
@@ -783,101 +951,116 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
         }}
       >
         <group ref={body}>
-          {/* stubby legs (pivot at hips) */}
+          {/* stubby capsule legs (pivot at hips) */}
           {[
             { side: -1, ref: legL },
             { side: 1, ref: legR },
           ].map(({ side, ref }) => (
             <group key={side} ref={ref} position={[side * 0.11, 0.28, 0]}>
-              <mesh position={[0, -0.11, 0]} castShadow>
-                <cylinderGeometry args={[0.078, 0.072, 0.22, 12]} />
-                <meshStandardMaterial color={look.legs} {...MAT} />
+              <mesh position={[0, -0.1, 0]} material={toon(look.legs)} castShadow>
+                <capsuleGeometry args={[0.07, 0.12, 4, 12]} />
+                <Outlines thickness={OUTLINE_W} color={OUTLINE} />
               </mesh>
               {/* cargo pocket on the outer thigh */}
               {!look.girl && (
-                <RoundedBox
-                  args={[0.045, 0.075, 0.09]}
-                  radius={0.015}
-                  position={[side * 0.085, -0.1, 0.015]}
-                >
-                  <meshStandardMaterial color="#3c3936" {...MAT} />
-                </RoundedBox>
+                <mesh position={[side * 0.075, -0.1, 0.015]} material={toon('#3c3936')}>
+                  <boxGeometry args={[0.045, 0.075, 0.09]} />
+                </mesh>
               )}
-              <mesh position={[0, -0.23, 0.04]} scale={[1, 0.9, 1.15]} castShadow>
-                <sphereGeometry args={[0.088, 14, 14]} />
-                <meshStandardMaterial color={look.shoes} {...MAT} />
+              <mesh
+                position={[0, -0.23, 0.04]}
+                scale={[1, 0.85, 1.2]}
+                material={toon(look.shoes)}
+                castShadow
+              >
+                <sphereGeometry args={[0.088, 16, 16]} />
+                <Outlines thickness={OUTLINE_W} color={OUTLINE} />
               </mesh>
             </group>
           ))}
 
-          {/* round body: plain tee for the boy, floral dress for the girl */}
+          {/* one-piece lathe body: tee (boy) / flared floral dress (girl) */}
           <group ref={torso} position={[0, 0.5, 0]}>
-            <RoundedBox args={[0.44, 0.42, 0.34]} radius={0.17} castShadow>
-              {look.girl ? (
-                <meshStandardMaterial map={getFloral()} {...MAT} />
-              ) : (
-                <meshStandardMaterial color={look.shirt} {...MAT} />
-              )}
-            </RoundedBox>
+            {look.girl ? (
+              <mesh geometry={getGirlBody()} position={[0, -0.26, 0]} material={dressMat!} castShadow>
+                <Outlines thickness={OUTLINE_W} color={OUTLINE} />
+              </mesh>
+            ) : (
+              <mesh geometry={getBoyBody()} position={[0, -0.21, 0]} material={toon(look.shirt)} castShadow>
+                <Outlines thickness={OUTLINE_W} color={OUTLINE} />
+              </mesh>
+            )}
           </group>
 
-          {/* skirt — kept outside the torso so breathing doesn't stretch it */}
-          {look.girl && (
-            <mesh position={[0, 0.36, 0]} castShadow>
-              <cylinderGeometry args={[0.21, 0.36, 0.3, 24, 1, true]} />
-              <meshStandardMaterial map={getFloral()} side={THREE.DoubleSide} {...MAT} />
-            </mesh>
-          )}
-
-          {/* short arms with mitten hands (pivot at shoulders) */}
+          {/* short capsule arms with mitten hands (pivot at shoulders) */}
           {[
             { side: -1, ref: armL },
             { side: 1, ref: armR },
           ].map(({ side, ref }) => (
             <group key={side} ref={ref} position={[side * 0.25, 0.66, 0]}>
-              <mesh position={[0, -0.1, 0]} castShadow>
-                <cylinderGeometry args={[0.058, 0.052, 0.2, 10]} />
-                <meshStandardMaterial color={look.sleeve} {...MAT} />
+              <mesh position={[0, -0.1, 0]} material={toon(look.sleeve)} castShadow>
+                <capsuleGeometry args={[0.055, 0.1, 4, 12]} />
+                <Outlines thickness={OUTLINE_W} color={OUTLINE} />
               </mesh>
-              <mesh position={[0, -0.22, 0]} scale={[0.95, 1, 0.85]} castShadow>
-                <sphereGeometry args={[0.07, 14, 14]} />
-                <meshStandardMaterial color={SKIN} {...MAT} />
+              <mesh
+                position={[0, -0.22, 0]}
+                scale={[0.95, 1, 0.85]}
+                material={toon(SKIN)}
+                castShadow
+              >
+                <sphereGeometry args={[0.07, 16, 16]} />
+                <Outlines thickness={OUTLINE_W} color={OUTLINE} />
               </mesh>
             </group>
           ))}
 
-          {/* oversized head — the Animal-Crossing signature */}
+          {/* oversized head with the painted face (blinks by swapping
+              the texture — no eye geometry at all) */}
           <group ref={head} position={[0, 1.0, 0]}>
-            <mesh castShadow>
-              <sphereGeometry args={[0.34, 24, 24]} />
-              <meshStandardMaterial color={SKIN} {...MAT} />
+            <mesh material={headMat} castShadow>
+              <sphereGeometry args={[0.34, 32, 32]} />
+              <Outlines thickness={OUTLINE_W} color={OUTLINE} />
             </mesh>
 
             {look.girl ? (
               <>
                 {/* bob: crown, side locks framing the face, back volume */}
-                <mesh position={[0, 0.04, -0.01]} scale={[1.05, 1.02, 1.06]} castShadow>
+                <mesh
+                  position={[0, 0.04, -0.01]}
+                  scale={[1.05, 1.02, 1.06]}
+                  material={toon(look.hair)}
+                  castShadow
+                >
                   <sphereGeometry args={[0.34, 24, 24, 0, Math.PI * 2, 0, Math.PI / 1.85]} />
-                  <meshStandardMaterial color={look.hair} {...MAT} />
+                  <Outlines thickness={OUTLINE_W} color={OUTLINE} />
                 </mesh>
                 {[-1, 1].map((side) => (
                   <mesh
                     key={side}
                     position={[side * 0.28, -0.04, 0.0]}
                     scale={[0.6, 1.45, 0.95]}
+                    material={toon(look.hair)}
                     castShadow
                   >
                     <sphereGeometry args={[0.17, 14, 14]} />
-                    <meshStandardMaterial color={look.hair} {...MAT} />
+                    <Outlines thickness={OUTLINE_W} color={OUTLINE} />
                   </mesh>
                 ))}
-                <mesh position={[0, -0.05, -0.13]} scale={[1, 1.12, 0.85]} castShadow>
+                <mesh
+                  position={[0, -0.05, -0.13]}
+                  scale={[1, 1.12, 0.85]}
+                  material={toon(look.hair)}
+                  castShadow
+                >
                   <sphereGeometry args={[0.3, 18, 18]} />
-                  <meshStandardMaterial color={look.hair} {...MAT} />
+                  <Outlines thickness={OUTLINE_W} color={OUTLINE} />
                 </mesh>
-                <mesh position={[0, 0.15, 0.21]} scale={[1.5, 0.55, 0.75]}>
+                <mesh
+                  position={[0, 0.15, 0.21]}
+                  scale={[1.5, 0.55, 0.75]}
+                  material={toon(look.hair)}
+                >
                   <sphereGeometry args={[0.2, 16, 16]} />
-                  <meshStandardMaterial color={look.hair} {...MAT} />
                 </mesh>
                 {/* flower clip */}
                 <group position={[0.26, 0.2, 0.16]}>
@@ -889,112 +1072,79 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
                         Math.sin((i / 5) * Math.PI * 2) * 0.052,
                         0,
                       ]}
+                      material={toon(look.accent)}
                     >
                       <sphereGeometry args={[0.034, 8, 8]} />
-                      <meshStandardMaterial color={look.accent} {...MAT} />
                     </mesh>
                   ))}
-                  <mesh position={[0, 0, 0.02]}>
+                  <mesh position={[0, 0, 0.02]} material={toon('#ffd166')}>
                     <sphereGeometry args={[0.028, 8, 8]} />
-                    <meshStandardMaterial color="#ffd166" {...MAT} />
                   </mesh>
                 </group>
               </>
             ) : (
               <>
                 {/* mullet: short crown + swept fringe, long in the back */}
-                <mesh position={[0, 0.05, -0.02]} scale={[1.04, 1, 1.05]} castShadow>
+                <mesh
+                  position={[0, 0.05, -0.02]}
+                  scale={[1.04, 1, 1.05]}
+                  material={toon(look.hair)}
+                  castShadow
+                >
                   <sphereGeometry args={[0.34, 24, 24, 0, Math.PI * 2, 0, Math.PI / 2.15]} />
-                  <meshStandardMaterial color={look.hair} {...MAT} />
+                  <Outlines thickness={OUTLINE_W} color={OUTLINE} />
                 </mesh>
                 <mesh
                   position={[-0.04, 0.18, 0.19]}
                   rotation={[0, 0, 0.35]}
                   scale={[1.5, 0.5, 0.7]}
+                  material={toon(look.hair)}
                   castShadow
                 >
                   <sphereGeometry args={[0.2, 16, 16]} />
-                  <meshStandardMaterial color={look.hair} {...MAT} />
+                  <Outlines thickness={OUTLINE_W} color={OUTLINE} />
                 </mesh>
-                <mesh position={[0, -0.16, -0.21]} scale={[0.85, 1.35, 0.45]} castShadow>
+                <mesh
+                  position={[0, -0.16, -0.21]}
+                  scale={[0.85, 1.35, 0.45]}
+                  material={toon(look.hair)}
+                  castShadow
+                >
                   <sphereGeometry args={[0.22, 14, 14]} />
-                  <meshStandardMaterial color={look.hair} {...MAT} />
+                  <Outlines thickness={OUTLINE_W} color={OUTLINE} />
                 </mesh>
                 {/* rectangular glasses: framed lenses, bridge, temple arms */}
                 <group position={[0, 0.02, 0.325]}>
                   {[-1, 1].map((side) => (
                     <group key={side} position={[side * 0.12, 0, 0]}>
                       {[0.06, -0.06].map((y) => (
-                        <mesh key={y} position={[0, y, 0]}>
+                        <mesh key={y} position={[0, y, 0]} material={toon(GLASSES)}>
                           <boxGeometry args={[0.14, 0.014, 0.014]} />
-                          <meshStandardMaterial color={GLASSES} roughness={0.4} />
                         </mesh>
                       ))}
                       {[-0.063, 0.063].map((x) => (
-                        <mesh key={x} position={[x, 0, 0]}>
+                        <mesh key={x} position={[x, 0, 0]} material={toon(GLASSES)}>
                           <boxGeometry args={[0.014, 0.134, 0.014]} />
-                          <meshStandardMaterial color={GLASSES} roughness={0.4} />
                         </mesh>
                       ))}
                     </group>
                   ))}
-                  <mesh position={[0, 0.035, 0]}>
+                  <mesh position={[0, 0.035, 0]} material={toon(GLASSES)}>
                     <boxGeometry args={[0.1, 0.012, 0.013]} />
-                    <meshStandardMaterial color={GLASSES} roughness={0.4} />
                   </mesh>
                   {[-1, 1].map((side) => (
                     <mesh
                       key={`arm${side}`}
                       position={[side * 0.24, 0.01, -0.16]}
                       rotation={[Math.PI / 2, 0, side * 0.25]}
+                      material={toon(GLASSES)}
                     >
                       <cylinderGeometry args={[0.009, 0.009, 0.3, 8]} />
-                      <meshStandardMaterial color={GLASSES} roughness={0.4} />
                     </mesh>
                   ))}
                 </group>
-                {/* freckles across the cheeks and nose */}
-                {FRECKLES.map(([fx, fy], i) => (
-                  <mesh key={i} position={[fx, fy, 0.3]}>
-                    <sphereGeometry args={[0.011, 6, 6]} />
-                    <meshStandardMaterial color={FRECKLE} roughness={0.8} />
-                  </mesh>
-                ))}
               </>
             )}
-
-            {/* big eyes with a highlight */}
-            <group ref={eyes} position={[0, 0.0, 0.29]}>
-              {[-0.12, 0.12].map((x) => (
-                <group key={x} position={[x, 0.02, 0]}>
-                  {/* boy's eyes sit a touch smaller so the frames enclose them */}
-                  <mesh scale={look.girl ? [0.8, 1.3, 0.5] : [0.75, 1.05, 0.5]}>
-                    <sphereGeometry args={[0.062, 16, 16]} />
-                    <meshStandardMaterial color="#2c2320" roughness={0.3} />
-                  </mesh>
-                  <mesh position={[0.02, 0.035, 0.028]}>
-                    <sphereGeometry args={[0.019, 8, 8]} />
-                    <meshBasicMaterial color="#ffffff" />
-                  </mesh>
-                </group>
-              ))}
-            </group>
-
-            {/* blush, nose, mouth */}
-            {[-0.21, 0.21].map((x) => (
-              <mesh key={x} position={[x, -0.09, 0.23]} scale={[1.3, 0.85, 1]}>
-                <sphereGeometry args={[0.05, 10, 10]} />
-                <meshStandardMaterial color="#f0a07f" transparent opacity={0.7} />
-              </mesh>
-            ))}
-            <mesh position={[0, -0.04, 0.33]}>
-              <sphereGeometry args={[0.023, 8, 8]} />
-              <meshStandardMaterial color="#e6b28c" {...MAT} />
-            </mesh>
-            <mesh position={[0, -0.14, 0.31]} scale={[1.7, 0.75, 0.4]}>
-              <sphereGeometry args={[0.03, 10, 10]} />
-              <meshStandardMaterial color="#8a5040" roughness={0.5} />
-            </mesh>
           </group>
         </group>
       </group>
