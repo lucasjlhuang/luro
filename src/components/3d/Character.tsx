@@ -284,9 +284,11 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
   /** Bone handles for the rigged monkey; null for the unrigged racoon. */
   const rig = useMemo<BoneRig | null>(() => {
     const capture = (name: string) => {
-      const bone = scene.getObjectByName(name);
+      const obj = scene.getObjectByName(name);
+      // Only genuine skeleton bones — never a stray flattened node.
+      const bone = obj && (obj as THREE.Bone).isBone ? obj : undefined;
       if (bone) bone.userData.restQ = bone.quaternion.clone();
-      return bone ?? undefined;
+      return bone;
     };
     const armL = capture(MONKEY_BONES.armL);
     if (!armL) return null; // not the rigged model
