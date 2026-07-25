@@ -97,10 +97,16 @@ function BubbleEditor({ onClose }: { onClose: () => void }) {
       <button
         onClick={onClose}
         aria-label="Close"
-        className="absolute -right-1 -top-1 flex h-[13px] w-[13px] items-center justify-center rounded-full bg-[#e8e4dc] shadow"
+        className="absolute -right-1 -top-1 h-[13px] w-[13px] rounded-full bg-[#e8e4dc] p-0 shadow"
       >
-        {/* SVG cross: dead-centre regardless of font metrics */}
-        <svg width="6" height="6" viewBox="0 0 6 6" aria-hidden>
+        {/* SVG cross, absolutely centred — immune to inline baseline quirks */}
+        <svg
+          width="7"
+          height="7"
+          viewBox="0 0 6 6"
+          aria-hidden
+          style={{ position: 'absolute', inset: 0, margin: 'auto', display: 'block' }}
+        >
           <path d="M1 1l4 4M5 1L1 5" stroke="#6b5b4a" strokeWidth="1.4" strokeLinecap="round" />
         </svg>
       </button>
@@ -216,7 +222,7 @@ const LIE_RAISE = 1.0; // body onto the mattress top (~0.86) plus half-thickness
 const TELE_OUT = 0.25;
 const TELE_IN = 0.3;
 const BUBBLE_HOLD = 5_000; // fully visible
-const BUBBLE_FADE = 1_000; // then one gentle fade
+const BUBBLE_FADE = 500; // then one gentle fade
 const BUBBLE_TTL = BUBBLE_HOLD + BUBBLE_FADE;
 const ROOM_CLAMP = 2.9;
 const CARRY_LIFT = 0.4; // how high a picked-up villager floats
