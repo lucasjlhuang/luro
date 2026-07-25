@@ -33,16 +33,6 @@ generate the platform icon set — the checked-in `icon.png` is a dev placeholde
 - **Persistence** — Zustand `persist` keeps notes, tasks, strokes, lighting, timer, and role in
   `localStorage`; PeerJS handles live in module-level singletons, never in persisted state.
 
-## Asset credits
-
-Character models (both CC-BY-4.0, bundled as compressed GLB):
-
-- "Racoon" by [myshmalysh](https://sketchfab.com/myshmalysh) —
-  https://sketchfab.com/3d-models/racoon-3f21569f7c094809be6eb922ac543370
-- "The Legend Of Zelda: Link's Awakening Monkey" by
-  [jackiebatteau](https://sketchfab.com/jackiebatteau) —
-  https://sketchfab.com/3d-models/the-legend-of-zelda--links-awakening-monkey-dcb29adacd2549b18649fc541087bb25
-
 ## Notes & known limits
 
 - Both desks must pick different roles (Settings ⚙ in the status bar). If both grab the same ID,
