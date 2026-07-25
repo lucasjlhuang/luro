@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import IsometricRoom from './components/3d/IsometricRoom';
 import { ModalLayer, StatusBar } from './components/ui/Modals';
@@ -37,7 +37,10 @@ export default function App() {
           style={{ background: 'transparent' }}
           onCreated={({ camera }) => camera.lookAt(0, 0.9, 0)}
         >
-          <IsometricRoom />
+          {/* character models load async; the room pops in when ready */}
+          <Suspense fallback={null}>
+            <IsometricRoom />
+          </Suspense>
         </Canvas>
       </div>
       <ModalLayer />

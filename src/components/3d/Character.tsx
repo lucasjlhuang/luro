@@ -1,125 +1,52 @@
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { ThreeEvent, useFrame } from '@react-three/fiber';
-import { RoundedBox } from '@react-three/drei';
-import { CharacterStatus, CharPos, partnerOf, useAppStore } from '../../store/useAppStore';
+import { useGLTF } from '@react-three/drei';
+import { CharacterStatus, CharPos, Role, partnerOf, useAppStore } from '../../store/useAppStore';
 import { setForceInteractive } from '../../lib/hitTest';
 import { CURSOR, lockCursor, setCursor, unlockCursor } from '../../lib/cursors';
+import racoonUrl from '../../assets/models/racoon.glb?url';
+import monkeyUrl from '../../assets/models/monkey.glb?url';
 
 /* ------------------------------------------------------------------ */
-/* Animal-Crossing-style villager, fully procedural.                  */
+/* Model-based characters (racoon = USER_A, monkey = USER_B), driven  */
+/* by rigid-body procedural animation: the whole model hops when      */
+/* walking, perches to sit, lies down, and rocks when carried. The    */
+/* models ship without animation clips, so nothing is skeletal.       */
 /*                                                                    */
-/* Statuses no longer walk the character onto furniture (that caused  */
-/* clipping): a posed status teleports via two puffs of smoke — one   */
-/* where the villager vanishes, one where they reappear already in    */
-/* the pose. Only IDLE walks: a gentle wander between open-floor      */
-/* waypoints.                                                         */
+/* Statuses teleport via two puffs of smoke rather than walking onto  */
+/* furniture; only IDLE walks (wander between open-floor waypoints).  */
 /*                                                                    */
-/* Interactions (own villager only):                                  */
+/* Interactions (own character only):                                 */
 /*   click          -> opens the speech-bubble input                  */
-/*   click + drag   -> pick the villager up and carry them around     */
+/*   click + drag   -> pick the character up and carry them around    */
 /* ------------------------------------------------------------------ */
 
 const WALK_SPEED = 1.05;
-const SKIN = '#f6e0c0';
-const MAT = { roughness: 0.85, metalness: 0.05 };
 
-/** Two villagers: USER_A is the boy, USER_B the girl. */
-const LOOKS = {
-  USER_A: {
-    girl: false,
-    shirt: '#a9d6ea', // light blue tee
-    sleeve: '#a9d6ea',
-    legs: '#2e2c2a', // black cargo pants
-    shoes: '#4a3a2a',
-    hair: '#3b2a1d', // dark brown, worn as a mullet
-    accent: '#f2b134',
-  },
-  USER_B: {
-    girl: true,
-    shirt: '#cfe8b5', // light green (dress body is the floral texture)
-    sleeve: '#cfe8b5',
-    legs: SKIN,
-    shoes: '#f7f0e2',
-    hair: '#a8815a', // light brown
-    accent: '#f28bb4', // pink hair flower
-  },
-} as const;
-
-const GLASSES = '#2f2a26';
-const FRECKLE = '#c98d5f';
-const FRECKLES: Array<[number, number]> = [
-  [-0.16, -0.075],
-  [-0.11, -0.09],
-  [-0.06, -0.075],
-  [0.06, -0.075],
-  [0.11, -0.09],
-  [0.16, -0.075],
-];
-
-/** Light-green floral print for the girl's dress. */
-let floralTex: THREE.CanvasTexture | null = null;
-function getFloral(): THREE.CanvasTexture {
-  if (floralTex) return floralTex;
-  const c = document.createElement('canvas');
-  c.width = 128;
-  c.height = 128;
-  const ctx = c.getContext('2d');
-  if (ctx) {
-    ctx.fillStyle = '#cfe8b5';
-    ctx.fillRect(0, 0, 128, 128);
-    const flowers: Array<[number, number, number]> = [
-      [22, 24, 7],
-      [86, 18, 6],
-      [58, 56, 8],
-      [18, 88, 6],
-      [96, 78, 7],
-      [58, 108, 6],
-      [112, 44, 5],
-    ];
-    for (const [fx, fy, r] of flowers) {
-      ctx.fillStyle = '#f5a8c0';
-      for (let i = 0; i < 5; i++) {
-        const a = (i / 5) * Math.PI * 2;
-        ctx.beginPath();
-        ctx.arc(fx + Math.cos(a) * r, fy + Math.sin(a) * r, r * 0.72, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.fillStyle = '#ffd166';
-      ctx.beginPath();
-      ctx.arc(fx, fy, r * 0.55, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-    for (const [dx, dy] of [
-      [40, 20],
-      [10, 55],
-      [76, 40],
-      [40, 86],
-      [104, 104],
-      [118, 12],
-    ]) {
-      ctx.beginPath();
-      ctx.arc(dx, dy, 2.2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-  floralTex = new THREE.CanvasTexture(c);
-  floralTex.wrapS = THREE.RepeatWrapping;
-  floralTex.wrapT = THREE.RepeatWrapping;
-  floralTex.repeat.set(2, 1.5);
-  floralTex.anisotropy = 4;
-  return floralTex;
+interface ModelSpec {
+  url: string;
+  /** Normalised world height of the character. */
+  height: number;
+  /** Extra yaw if the source model doesn't face +z. */
+  yaw: number;
 }
 
-const SIT_RAISE = 0.35; // hips onto the chair seat (~0.63 after 1.12x scale)
-const LIE_RAISE = 1.0; // body onto the mattress top (~0.86) plus half-thickness
+const MODELS: Record<Role, ModelSpec> = {
+  USER_A: { url: racoonUrl, height: 1.15, yaw: 0 },
+  USER_B: { url: monkeyUrl, height: 1.05, yaw: 0 },
+};
+
+useGLTF.preload(racoonUrl);
+useGLTF.preload(monkeyUrl);
+
+const SIT_RAISE = 0.5; // perch the model onto the chair seat
+const LIE_RAISE = 1.0; // onto the mattress top
 const TELE_OUT = 0.25;
 const TELE_IN = 0.3;
 const BUBBLE_TTL = 30_000;
 const ROOM_CLAMP = 2.9;
-const CARRY_LIFT = 0.4; // how high a picked-up villager floats
-const HEAD_TOP = 1.36; // head centre (1.0) + radius (0.34) + hair, above the root
+const CARRY_LIFT = 0.4;
 
 interface Spots {
   chairX: number;
@@ -127,7 +54,7 @@ interface Spots {
   idle: Array<[number, number]>;
 }
 
-/** Per-user destinations so two villagers never fight over one spot. */
+/** Per-user destinations so two characters never fight over one spot. */
 const SPOTS: Record<'me' | 'partner', Spots> = {
   me: {
     chairX: 0.62,
@@ -160,12 +87,6 @@ const LIE_Q = new THREE.Quaternion().setFromRotationMatrix(
   )
 );
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
-/**
- * Horizontal plane at the height a carried villager's head-top sits.
- * Intersecting the cursor ray with *this* (rather than the floor) puts
- * the top of the head under the pointer instead of the feet.
- */
-const GRAB_PLANE = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(CARRY_LIFT + HEAD_TOP));
 const TMP_VEC = new THREE.Vector3();
 
 function dampAngle(current: number, target: number, lambda: number, dt: number): number {
@@ -284,25 +205,17 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
   const status = useAppStore((s) => (variant === 'me' ? s.myStatus : s.partnerStatus));
   const bubble = useAppStore((s) => (variant === 'me' ? s.myBubble : s.partnerBubble));
   const spots = SPOTS[variant];
-  // The model follows the *role*, not who is looking: A is always the boy.
+  // The model follows the *role*, not who is looking: A is always the racoon.
   const role = useAppStore((s) => (variant === 'me' ? s.role : partnerOf(s.role)));
-  const look = LOOKS[role];
+  const model = MODELS[role];
 
   const root = useRef<THREE.Group>(null!);
   const body = useRef<THREE.Group>(null!);
-  const torso = useRef<THREE.Group>(null!);
-  const head = useRef<THREE.Group>(null!);
-  const armL = useRef<THREE.Group>(null!);
-  const armR = useRef<THREE.Group>(null!);
-  const legL = useRef<THREE.Group>(null!);
-  const legR = useRef<THREE.Group>(null!);
-  const eyes = useRef<THREE.Group>(null!);
   const zzz = useRef<THREE.Mesh>(null!);
   const zzzMat = useRef<THREE.MeshBasicMaterial>(null!);
   const bubbleMesh = useRef<THREE.Mesh>(null!);
   const bubbleMat = useRef<THREE.MeshBasicMaterial>(null!);
   const puffGroups = [useRef<THREE.Group>(null!), useRef<THREE.Group>(null!)];
-  // One shared material per puff so all particles fade together.
   const puffMaterials = useMemo(
     () =>
       [0, 1].map(
@@ -315,6 +228,32 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
           })
       ),
     []
+  );
+
+  /* ---------------- model loading & normalisation ---------------- */
+  const { scene } = useGLTF(model.url);
+  const fitted = useMemo(() => {
+    scene.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(scene);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const scale = model.height / Math.max(size.y, 0.001);
+    scene.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        obj.castShadow = true;
+        obj.frustumCulled = false; // skinned bounds can be wrong mid-animation
+      }
+    });
+    return { scale, offset: [-center.x, -box.min.y, -center.z] as const };
+  }, [scene, model.height]);
+
+  /**
+   * The grab plane sits at the model's head-top height so the crown of
+   * the head tracks the cursor while carried.
+   */
+  const grabPlane = useMemo(
+    () => new THREE.Plane(new THREE.Vector3(0, 1, 0), -(CARRY_LIFT + model.height)),
+    [model.height]
   );
 
   const zzzTexture = useMemo(makeZzzTexture, []);
@@ -393,7 +332,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
         sim.current.dragging = true;
         setForceInteractive(true);
         lockCursor(CURSOR.grab);
-        // A carried villager stops holding furniture poses.
+        // A carried character stops holding furniture poses.
         if (useAppStore.getState().myStatus !== 'IDLE') {
           useAppStore.getState().setMyStatus('IDLE');
         }
@@ -469,9 +408,9 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     /* ---------- movement ---------- */
     let walking = false;
     if (s.dragging) {
-      // Carried: hang the villager so their head-top tracks the cursor.
+      // Carried: hang the character so their head-top tracks the cursor.
       frame.raycaster.setFromCamera(frame.pointer, frame.camera);
-      const hit = frame.raycaster.ray.intersectPlane(GRAB_PLANE, TMP_VEC);
+      const hit = frame.raycaster.ray.intersectPlane(grabPlane, TMP_VEC);
       if (hit) {
         s.x = damp(s.x, THREE.MathUtils.clamp(hit.x, -ROOM_CLAMP, ROOM_CLAMP), 20);
         s.z = damp(s.z, THREE.MathUtils.clamp(hit.z, -ROOM_CLAMP, ROOM_CLAMP), 20);
@@ -488,7 +427,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
       s.scale = damp(s.scale, 1, 12);
     } else if (s.tele === 'none' && status === 'IDLE') {
       if (remote) {
-        // Partner's villager mirrors the live stream from their client.
+        // Partner's character mirrors the live stream from their client.
         const dist = Math.hypot(remote.x - s.x, remote.z - s.z);
         walking = !remote.carried && dist > 0.06;
         s.x = damp(s.x, remote.x, 12);
@@ -549,7 +488,8 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     }
 
     /* ---------- root transform ---------- */
-    const carried = s.dragging || (remote !== null && remote.carried && status === 'IDLE' && s.tele === 'none');
+    const carried =
+      s.dragging || (remote !== null && remote.carried && status === 'IDLE' && s.tele === 'none');
     const lieE = THREE.MathUtils.smoothstep(s.lie, 0, 1);
     const carryY = carried ? CARRY_LIFT + Math.sin(t * 3) * 0.03 : 0;
     root.current.position.set(s.x, carryY + lieE * LIE_RAISE + s.sit * SIT_RAISE, s.z);
@@ -557,43 +497,22 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     root.current.quaternion.copy(qStand).slerp(LIE_Q, lieE);
     root.current.scale.setScalar(Math.max(0.001, s.scale));
 
-    /* ---------- limbs & secondary motion ---------- */
-    const bob = walking ? Math.abs(Math.cos(s.walkT)) * 0.05 : Math.sin(t * 2.2) * 0.012;
-    body.current.position.y = bob * (1 - lieE);
-
-    const swing = walking ? Math.sin(s.walkT) * 0.5 : 0;
-    // Carried: a proper protest — arms and legs flail until let go.
-    const dangle = carried ? Math.sin(t * 8) * 0.45 : 0;
-    const legPose = s.sit * -1.5;
-    legL.current.rotation.x = damp(legL.current.rotation.x, swing + legPose + dangle, 12);
-    legR.current.rotation.x = damp(legR.current.rotation.x, -swing + legPose - dangle, 12);
-
-    const working = status === 'WORKING' && s.sit > 0.7 && !s.dragging;
-    const armPoseL = working ? -1.05 + Math.sin(t * 10) * 0.08 : 0;
-    const armPoseR = working ? -1.05 + Math.cos(t * 10 + 1) * 0.08 : 0;
-    const armTarget = carried ? 0.4 + Math.sin(t * 9 + 0.6) * 0.5 : walking ? -swing * 0.7 : armPoseL;
-    const armTargetR = carried ? 0.4 - Math.sin(t * 9) * 0.5 : walking ? swing * 0.7 : armPoseR;
-    armL.current.rotation.x = damp(armL.current.rotation.x, armTarget, 12);
-    armR.current.rotation.x = damp(armR.current.rotation.x, armTargetR, 12);
-    // Negative Z splays the left arm outward (positive would fold it
-    // across the chest); mirrored for the right.
-    armL.current.rotation.z = damp(armL.current.rotation.z, carried ? -(0.55 + Math.cos(t * 7) * 0.2) : 0, 10);
-    armR.current.rotation.z = damp(armR.current.rotation.z, carried ? 0.55 + Math.cos(t * 7 + 0.8) * 0.2 : 0, 10);
-
-    torso.current.rotation.x = damp(
-      torso.current.rotation.x,
-      (walking ? 0.07 : 0) + s.sit * 0.06,
+    /* ---------- rigid body motion (models have no rig clips) ---------- */
+    const hop = walking ? Math.abs(Math.sin(s.walkT)) * 0.07 : 0;
+    const typing = status === 'WORKING' && s.sit > 0.7 ? Math.abs(Math.sin(t * 9)) * 0.015 : 0;
+    body.current.position.y = (hop + typing + Math.sin(t * 2.2) * 0.008) * (1 - lieE);
+    // walk waddle / carried rocking protest
+    const waddle = walking ? Math.sin(s.walkT) * 0.08 : 0;
+    const rock = carried ? Math.sin(t * 8) * 0.14 : 0;
+    body.current.rotation.z = damp(body.current.rotation.z, waddle + rock, 12);
+    body.current.rotation.x = damp(
+      body.current.rotation.x,
+      (walking ? 0.06 : 0) + (carried ? 0.12 : 0) + s.sit * -0.08,
       10
     );
-    const breathe = 1 + (s.lie > 0.8 ? Math.sin(t * 2) * 0.03 : 0.008 * Math.sin(t * 2.2));
-    torso.current.scale.set(1, breathe, 1);
-
-    head.current.rotation.y = damp(
-      head.current.rotation.y,
-      !walking && status === 'IDLE' && !s.dragging ? Math.sin(t * 0.6) * 0.5 : 0,
-      6
-    );
-    eyes.current.scale.y = s.lie > 0.5 ? 0.1 : t % 3.4 < 0.12 ? 0.15 : 1;
+    // breathing: gentle upright, deep while asleep
+    const breathe = 1 + (s.lie > 0.8 ? Math.sin(t * 2) * 0.03 : 0.006 * Math.sin(t * 2.2));
+    body.current.scale.set(1, breathe, 1);
 
     /* ---------- puffs of smoke ---------- */
     puffs.current.forEach((p, i) => {
@@ -632,8 +551,8 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     const bubbleVisible = bubble.text.length > 0 && age < BUBBLE_TTL;
     const fade = bubbleVisible ? Math.min(1, (BUBBLE_TTL - age) / 3000) : 0;
     bubbleMat.current.opacity = damp(bubbleMat.current.opacity, fade * s.scale, 8);
-    const headY = root.current.position.y + (lieE > 0.5 ? 0.6 : 1.3);
-    bubbleMesh.current.position.set(s.x, headY + 0.45, s.z);
+    const headY = root.current.position.y + (lieE > 0.5 ? 0.5 : model.height);
+    bubbleMesh.current.position.set(s.x, headY + 0.5, s.z);
     bubbleMesh.current.quaternion.copy(frame.camera.quaternion);
   });
 
@@ -654,218 +573,11 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
         }}
       >
         <group ref={body}>
-          {/* stubby legs (pivot at hips) */}
-          {[
-            { side: -1, ref: legL },
-            { side: 1, ref: legR },
-          ].map(({ side, ref }) => (
-            <group key={side} ref={ref} position={[side * 0.11, 0.28, 0]}>
-              <mesh position={[0, -0.11, 0]} castShadow>
-                <cylinderGeometry args={[0.078, 0.072, 0.22, 12]} />
-                <meshStandardMaterial color={look.legs} {...MAT} />
-              </mesh>
-              {/* cargo pocket on the outer thigh */}
-              {!look.girl && (
-                <RoundedBox
-                  args={[0.045, 0.075, 0.09]}
-                  radius={0.015}
-                  position={[side * 0.085, -0.1, 0.015]}
-                >
-                  <meshStandardMaterial color="#3c3936" {...MAT} />
-                </RoundedBox>
-              )}
-              <mesh position={[0, -0.23, 0.04]} scale={[1, 0.9, 1.15]} castShadow>
-                <sphereGeometry args={[0.088, 14, 14]} />
-                <meshStandardMaterial color={look.shoes} {...MAT} />
-              </mesh>
-            </group>
-          ))}
-
-          {/* round body: plain tee for the boy, floral dress for the girl */}
-          <group ref={torso} position={[0, 0.5, 0]}>
-            <RoundedBox args={[0.44, 0.42, 0.34]} radius={0.17} castShadow>
-              {look.girl ? (
-                <meshStandardMaterial map={getFloral()} {...MAT} />
-              ) : (
-                <meshStandardMaterial color={look.shirt} {...MAT} />
-              )}
-            </RoundedBox>
-          </group>
-
-          {/* skirt — kept outside the torso so breathing doesn't stretch it */}
-          {look.girl && (
-            <mesh position={[0, 0.36, 0]} castShadow>
-              <cylinderGeometry args={[0.21, 0.36, 0.3, 24, 1, true]} />
-              <meshStandardMaterial map={getFloral()} side={THREE.DoubleSide} {...MAT} />
-            </mesh>
-          )}
-
-          {/* short arms with mitten hands (pivot at shoulders) */}
-          {[
-            { side: -1, ref: armL },
-            { side: 1, ref: armR },
-          ].map(({ side, ref }) => (
-            <group key={side} ref={ref} position={[side * 0.25, 0.66, 0]}>
-              <mesh position={[0, -0.1, 0]} castShadow>
-                <cylinderGeometry args={[0.058, 0.052, 0.2, 10]} />
-                <meshStandardMaterial color={look.sleeve} {...MAT} />
-              </mesh>
-              <mesh position={[0, -0.22, 0]} scale={[0.95, 1, 0.85]} castShadow>
-                <sphereGeometry args={[0.07, 14, 14]} />
-                <meshStandardMaterial color={SKIN} {...MAT} />
-              </mesh>
-            </group>
-          ))}
-
-          {/* oversized head — the Animal-Crossing signature */}
-          <group ref={head} position={[0, 1.0, 0]}>
-            <mesh castShadow>
-              <sphereGeometry args={[0.34, 24, 24]} />
-              <meshStandardMaterial color={SKIN} {...MAT} />
-            </mesh>
-
-            {look.girl ? (
-              <>
-                {/* bob: crown, side locks framing the face, back volume */}
-                <mesh position={[0, 0.04, -0.01]} scale={[1.05, 1.02, 1.06]} castShadow>
-                  <sphereGeometry args={[0.34, 24, 24, 0, Math.PI * 2, 0, Math.PI / 1.85]} />
-                  <meshStandardMaterial color={look.hair} {...MAT} />
-                </mesh>
-                {[-1, 1].map((side) => (
-                  <mesh
-                    key={side}
-                    position={[side * 0.28, -0.04, 0.0]}
-                    scale={[0.6, 1.45, 0.95]}
-                    castShadow
-                  >
-                    <sphereGeometry args={[0.17, 14, 14]} />
-                    <meshStandardMaterial color={look.hair} {...MAT} />
-                  </mesh>
-                ))}
-                <mesh position={[0, -0.05, -0.13]} scale={[1, 1.12, 0.85]} castShadow>
-                  <sphereGeometry args={[0.3, 18, 18]} />
-                  <meshStandardMaterial color={look.hair} {...MAT} />
-                </mesh>
-                <mesh position={[0, 0.15, 0.21]} scale={[1.5, 0.55, 0.75]}>
-                  <sphereGeometry args={[0.2, 16, 16]} />
-                  <meshStandardMaterial color={look.hair} {...MAT} />
-                </mesh>
-                {/* flower clip */}
-                <group position={[0.26, 0.2, 0.16]}>
-                  {[0, 1, 2, 3, 4].map((i) => (
-                    <mesh
-                      key={i}
-                      position={[
-                        Math.cos((i / 5) * Math.PI * 2) * 0.052,
-                        Math.sin((i / 5) * Math.PI * 2) * 0.052,
-                        0,
-                      ]}
-                    >
-                      <sphereGeometry args={[0.034, 8, 8]} />
-                      <meshStandardMaterial color={look.accent} {...MAT} />
-                    </mesh>
-                  ))}
-                  <mesh position={[0, 0, 0.02]}>
-                    <sphereGeometry args={[0.028, 8, 8]} />
-                    <meshStandardMaterial color="#ffd166" {...MAT} />
-                  </mesh>
-                </group>
-              </>
-            ) : (
-              <>
-                {/* mullet: short crown + swept fringe, long in the back */}
-                <mesh position={[0, 0.05, -0.02]} scale={[1.04, 1, 1.05]} castShadow>
-                  <sphereGeometry args={[0.34, 24, 24, 0, Math.PI * 2, 0, Math.PI / 2.15]} />
-                  <meshStandardMaterial color={look.hair} {...MAT} />
-                </mesh>
-                <mesh
-                  position={[-0.04, 0.18, 0.19]}
-                  rotation={[0, 0, 0.35]}
-                  scale={[1.5, 0.5, 0.7]}
-                  castShadow
-                >
-                  <sphereGeometry args={[0.2, 16, 16]} />
-                  <meshStandardMaterial color={look.hair} {...MAT} />
-                </mesh>
-                <mesh position={[0, -0.16, -0.21]} scale={[0.85, 1.35, 0.45]} castShadow>
-                  <sphereGeometry args={[0.22, 14, 14]} />
-                  <meshStandardMaterial color={look.hair} {...MAT} />
-                </mesh>
-                {/* rectangular glasses: framed lenses, bridge, temple arms */}
-                <group position={[0, 0.02, 0.325]}>
-                  {[-1, 1].map((side) => (
-                    <group key={side} position={[side * 0.12, 0, 0]}>
-                      {[0.06, -0.06].map((y) => (
-                        <mesh key={y} position={[0, y, 0]}>
-                          <boxGeometry args={[0.14, 0.014, 0.014]} />
-                          <meshStandardMaterial color={GLASSES} roughness={0.4} />
-                        </mesh>
-                      ))}
-                      {[-0.063, 0.063].map((x) => (
-                        <mesh key={x} position={[x, 0, 0]}>
-                          <boxGeometry args={[0.014, 0.134, 0.014]} />
-                          <meshStandardMaterial color={GLASSES} roughness={0.4} />
-                        </mesh>
-                      ))}
-                    </group>
-                  ))}
-                  <mesh position={[0, 0.035, 0]}>
-                    <boxGeometry args={[0.1, 0.012, 0.013]} />
-                    <meshStandardMaterial color={GLASSES} roughness={0.4} />
-                  </mesh>
-                  {[-1, 1].map((side) => (
-                    <mesh
-                      key={`arm${side}`}
-                      position={[side * 0.24, 0.01, -0.16]}
-                      rotation={[Math.PI / 2, 0, side * 0.25]}
-                    >
-                      <cylinderGeometry args={[0.009, 0.009, 0.3, 8]} />
-                      <meshStandardMaterial color={GLASSES} roughness={0.4} />
-                    </mesh>
-                  ))}
-                </group>
-                {/* freckles across the cheeks and nose */}
-                {FRECKLES.map(([fx, fy], i) => (
-                  <mesh key={i} position={[fx, fy, 0.3]}>
-                    <sphereGeometry args={[0.011, 6, 6]} />
-                    <meshStandardMaterial color={FRECKLE} roughness={0.8} />
-                  </mesh>
-                ))}
-              </>
-            )}
-
-            {/* big eyes with a highlight */}
-            <group ref={eyes} position={[0, 0.0, 0.29]}>
-              {[-0.12, 0.12].map((x) => (
-                <group key={x} position={[x, 0.02, 0]}>
-                  {/* boy's eyes sit a touch smaller so the frames enclose them */}
-                  <mesh scale={look.girl ? [0.8, 1.3, 0.5] : [0.75, 1.05, 0.5]}>
-                    <sphereGeometry args={[0.062, 16, 16]} />
-                    <meshStandardMaterial color="#2c2320" roughness={0.3} />
-                  </mesh>
-                  <mesh position={[0.02, 0.035, 0.028]}>
-                    <sphereGeometry args={[0.019, 8, 8]} />
-                    <meshBasicMaterial color="#ffffff" />
-                  </mesh>
-                </group>
-              ))}
-            </group>
-
-            {/* blush, nose, mouth */}
-            {[-0.21, 0.21].map((x) => (
-              <mesh key={x} position={[x, -0.09, 0.23]} scale={[1.3, 0.85, 1]}>
-                <sphereGeometry args={[0.05, 10, 10]} />
-                <meshStandardMaterial color="#f0a07f" transparent opacity={0.7} />
-              </mesh>
-            ))}
-            <mesh position={[0, -0.04, 0.33]}>
-              <sphereGeometry args={[0.023, 8, 8]} />
-              <meshStandardMaterial color="#e6b28c" {...MAT} />
-            </mesh>
-            <mesh position={[0, -0.14, 0.31]} scale={[1.7, 0.75, 0.4]}>
-              <sphereGeometry args={[0.03, 10, 10]} />
-              <meshStandardMaterial color="#8a5040" roughness={0.5} />
-            </mesh>
+          <group scale={fitted.scale} rotation={[0, model.yaw, 0]}>
+            <primitive
+              object={scene}
+              position={[fitted.offset[0], fitted.offset[1], fitted.offset[2]]}
+            />
           </group>
         </group>
       </group>
