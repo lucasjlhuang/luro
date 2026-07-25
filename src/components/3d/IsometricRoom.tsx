@@ -14,8 +14,8 @@ import Character from './Character';
 /* ------------------------------------------------------------------ */
 
 const P = {
-  wallTeal: '#a5cede',
-  wallTealSide: '#96bfd4',
+  wallTeal: '#2a9184',
+  wallTealSide: '#238073',
   pink: '#f2a8bd',
   brown: '#9c6b4a',
   brownLight: '#b07f5c',
@@ -246,15 +246,15 @@ function CircularRug() {
     <group position={[0.3, 0, 0.3]}>
       <mesh position={[0, 0.1, 0]} receiveShadow raycast={() => null}>
         <cylinderGeometry args={[1.7, 1.7, 0.05, 56]} />
-        <meshStandardMaterial color={P.pink} {...CLAY} />
+        <meshStandardMaterial color={P.teal} {...CLAY} />
       </mesh>
       <mesh position={[0, 0.13, 0]} receiveShadow raycast={() => null}>
         <cylinderGeometry args={[1.26, 1.26, 0.045, 56]} />
-        <meshStandardMaterial color={P.white} {...CLAY} />
+        <meshStandardMaterial color={P.cream} {...CLAY} />
       </mesh>
       <mesh position={[0, 0.155, 0]} receiveShadow raycast={() => null}>
         <cylinderGeometry args={[0.63, 0.63, 0.04, 40]} />
-        <meshStandardMaterial color={P.pink} {...CLAY} />
+        <meshStandardMaterial color={P.orangeSoft} {...CLAY} />
       </mesh>
     </group>
   );

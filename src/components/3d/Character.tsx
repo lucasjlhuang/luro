@@ -575,8 +575,10 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     const armTargetR = carried ? 0.4 - Math.sin(t * 9) * 0.5 : walking ? swing * 0.7 : armPoseR;
     armL.current.rotation.x = damp(armL.current.rotation.x, armTarget, 12);
     armR.current.rotation.x = damp(armR.current.rotation.x, armTargetR, 12);
-    armL.current.rotation.z = damp(armL.current.rotation.z, carried ? 0.55 + Math.cos(t * 7) * 0.2 : 0, 10);
-    armR.current.rotation.z = damp(armR.current.rotation.z, carried ? -0.55 - Math.cos(t * 7 + 0.8) * 0.2 : 0, 10);
+    // Negative Z splays the left arm outward (positive would fold it
+    // across the chest); mirrored for the right.
+    armL.current.rotation.z = damp(armL.current.rotation.z, carried ? -(0.55 + Math.cos(t * 7) * 0.2) : 0, 10);
+    armR.current.rotation.z = damp(armR.current.rotation.z, carried ? 0.55 + Math.cos(t * 7 + 0.8) * 0.2 : 0, 10);
 
     torso.current.rotation.x = damp(
       torso.current.rotation.x,
