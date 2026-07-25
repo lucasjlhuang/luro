@@ -901,9 +901,9 @@ function Shirt({
     c.height = 64;
     const ctx = c.getContext('2d');
     if (ctx) {
-      for (let y = 0; y < 64; y += 8) {
-        ctx.fillStyle = (y / 8) % 2 === 0 ? '#232f4e' : '#4a3260';
-        ctx.fillRect(0, y, 64, 8);
+      for (let y = 0; y < 64; y += 4) {
+        ctx.fillStyle = (y / 4) % 2 === 0 ? '#232f4e' : '#4a3260';
+        ctx.fillRect(0, y, 64, 4);
       }
     }
     const t = new THREE.CanvasTexture(c);
