@@ -41,6 +41,7 @@ export default function Prop({
   ground = true,
   envIntensity = 1.4,
   matte = false,
+  brightness = 1,
 }: {
   url: string;
   position: [number, number, number];
@@ -54,6 +55,12 @@ export default function Prop({
   envIntensity?: number;
   /** Force fully rough/non-metal — for photo scans whose light is baked in. */
   matte?: boolean;
+  /**
+   * Per-prop exposure lift (1 = untouched). Multiplies the base colour
+   * and adds a small self-lit component from the model's own texture,
+   * so only this prop brightens — scene lighting is untouched.
+   */
+  brightness?: number;
 }) {
   const { scene } = useGLTF(url);
   const fitted = useMemo(() => {
@@ -75,6 +82,14 @@ export default function Prop({
               mat.roughness = 1;
               mat.metalness = 0;
             }
+            // Idempotent brightness: always derive from the stashed
+            // original so re-renders never compound the multiplier.
+            if (!mat.userData.baseColor) mat.userData.baseColor = mat.color.clone();
+            mat.color.copy(mat.userData.baseColor as THREE.Color).multiplyScalar(brightness);
+            if (brightness > 1 && mat.map) {
+              mat.emissiveMap = mat.map;
+              mat.emissive.setScalar(Math.min(0.35, (brightness - 1) * 0.35));
+            }
           }
         }
       }
@@ -83,7 +98,7 @@ export default function Prop({
       scale,
       offset: [-center.x, ground ? -box.min.y : -center.y, -center.z] as const,
     };
-  }, [scene, fitAxis, fitSize, ground, envIntensity, matte]);
+  }, [scene, fitAxis, fitSize, ground, envIntensity, matte, brightness]);
 
   return (
     <group position={position} rotation={[0, rotationY, 0]} scale={fitted.scale}>
