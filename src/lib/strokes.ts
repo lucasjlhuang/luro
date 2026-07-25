@@ -34,6 +34,8 @@ export function renderStrokes(
 
   for (const s of strokes) {
     octx.globalCompositeOperation = s.erase ? 'destination-out' : 'source-over';
+    // Eraser marks are blocky like the physical eraser; pen stays round.
+    octx.lineCap = s.erase ? 'square' : 'round';
     octx.strokeStyle = s.color;
     octx.lineWidth = Math.max(1, s.size * (w / STROKE_BASE_WIDTH));
     octx.beginPath();

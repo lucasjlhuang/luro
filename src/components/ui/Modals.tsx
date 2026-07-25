@@ -4,10 +4,11 @@ import {
   ReactNode,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
-import { PEER_IDS, Role, partnerOf, useAppStore } from '../../store/useAppStore';
+import { Role, useAppStore } from '../../store/useAppStore';
 import { renderStrokes } from '../../lib/strokes';
 import { CURSOR, lockCursor, setCursor, unlockCursor } from '../../lib/cursors';
 import { setForceInteractive } from '../../lib/hitTest';
@@ -23,7 +24,6 @@ const WOOD_DARK = '#c99a5f';
 const ORANGE = '#ee7d3c';
 const CREAM = '#f6ecca';
 const CREAM_SOFT = '#efe2ba';
-const SCREEN_BG = '#12312e';
 
 /* ------------------------------------------------------------------ */
 /* Shared drag behaviour: every panel is draggable by its chrome and  */
@@ -126,9 +126,14 @@ function inlineMd(text: string, keyPrefix: string): ReactNode[] {
   });
 }
 
+/** Blinking caret shown wherever a page is still empty. */
+function TypingCaret() {
+  return <span className="inline-block h-4 w-[2px] animate-pulse bg-[#4a3c28]" />;
+}
+
 function MarkdownView({ source }: { source: string }) {
   if (!source.trim()) {
-    return <p className="text-[12px] italic text-[#a08a66]">Nothing written yet…</p>;
+    return <TypingCaret />;
   }
   return (
     <div className="space-y-1 text-[12px] leading-5 text-[#4a3c28]">
@@ -176,11 +181,17 @@ const RULED_LINES = {
   backgroundPositionY: '6px',
 };
 
+const WORLD_NAMES: Record<Role, string> = {
+  USER_A: "Lulu's World",
+  USER_B: "Roro's World",
+};
+
 function NotebookModal() {
   const myNotes = useAppStore((s) => s.myNotes);
   const setMyNotes = useAppStore((s) => s.setMyNotes);
   const partnerNotes = useAppStore((s) => s.partnerNotes);
-  const connected = useAppStore((s) => s.connectionStatus === 'CONNECTED');
+  const role = useAppStore((s) => s.role);
+  const partnerRole: Role = role === 'USER_A' ? 'USER_B' : 'USER_A';
 
   return (
     <DragShell id="notebook">
@@ -189,20 +200,26 @@ function NotebookModal() {
         <div className="flex h-[320px] w-[452px] overflow-hidden rounded-lg shadow-inner">
           <div className="flex flex-1 flex-col p-3" style={{ background: CREAM, ...RULED_LINES }}>
             <div className="mb-1 text-[9px] font-bold uppercase tracking-widest text-[#a08a66]">
-              My page · markdown
+              {WORLD_NAMES[role]}
             </div>
-            <textarea
-              value={myNotes}
-              onChange={(e) => setMyNotes(e.target.value)}
-              spellCheck={false}
-              placeholder={'# Today\n- write something…'}
-              className="flex-1 resize-none bg-transparent font-mono text-[12px] leading-5 text-[#4a3c28] outline-none placeholder:text-[#b8a380]"
-            />
+            <div className="relative flex flex-1">
+              <textarea
+                value={myNotes}
+                onChange={(e) => setMyNotes(e.target.value)}
+                spellCheck={false}
+                className="flex-1 resize-none bg-transparent font-mono text-[12px] leading-5 text-[#4a3c28] outline-none"
+              />
+              {myNotes === '' && (
+                <span className="pointer-events-none absolute left-0 top-0.5">
+                  <TypingCaret />
+                </span>
+              )}
+            </div>
           </div>
           <div className="w-[5px] shrink-0" style={{ background: 'linear-gradient(90deg, rgba(0,0,0,0.16), rgba(0,0,0,0.02))' }} />
           <div className="flex flex-1 flex-col overflow-hidden p-3" style={{ background: '#f9f4e8', ...RULED_LINES }}>
             <div className="mb-1 text-[9px] font-bold uppercase tracking-widest text-[#a08a66]">
-              Partner's page {connected ? '· live' : '· offline'}
+              {WORLD_NAMES[partnerRole]}
             </div>
             <div className="flex-1 overflow-y-auto pr-1">
               <MarkdownView source={partnerNotes} />
@@ -301,19 +318,24 @@ function CorkboardModal() {
         >
           <section className="flex min-h-0 flex-col">
             <TapeLabel>To Do · {todo.length}</TapeLabel>
-            <form onSubmit={submit} className="mb-1.5 px-1">
+            <form
+              onSubmit={submit}
+              className="relative mb-2 rotate-1 px-2 pb-1.5 pt-3 shadow-md"
+              style={{ background: '#ffe66b' }}
+            >
+              <span className="absolute left-1/2 top-1 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-red-500/80 shadow-sm" />
               <input
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 placeholder="Add task…"
-                className="w-full rounded-sm bg-white/85 px-2 py-1 text-[11px] text-[#5b4a32] shadow-inner outline-none placeholder:text-[#b09a76]"
+                className="w-full bg-transparent text-[11px] text-[#6b5b2a] outline-none placeholder:text-[#a89a5e]"
               />
             </form>
             <div className={listCls}>
               {todo.map((t) => (
                 <StickyNote
                   key={t.id}
-                  color="#f4a259"
+                  color="#ffe66b"
                   tilt={noteTilt(t.id)}
                   actions={
                     <>
@@ -334,7 +356,7 @@ function CorkboardModal() {
               {doing.map((t) => (
                 <StickyNote
                   key={t.id}
-                  color="#ffd166"
+                  color="#a8d8ea"
                   tilt={noteTilt(t.id)}
                   actions={
                     <>
@@ -353,16 +375,13 @@ function CorkboardModal() {
             <TapeLabel>Partner · {partnerTasks.length}</TapeLabel>
             <div className={listCls}>
               {partnerTasks.map((t) => (
-                <StickyNote key={t.id} color="#7fb8a8" tilt={noteTilt(t.id)}>
-                  <span className="text-[#2f4a42]">{t.text}</span>
-                  <div className="mt-0.5 text-[8px] font-bold uppercase tracking-wider text-[#2f4a42]/70">
+                <StickyNote key={t.id} color="#f9c1d0" tilt={noteTilt(t.id)}>
+                  <span className="text-[#6b3a4a]">{t.text}</span>
+                  <div className="mt-0.5 text-[8px] font-bold uppercase tracking-wider text-[#6b3a4a]/70">
                     {t.status === 'IN_PROGRESS' ? 'in progress' : 'to do'}
                   </div>
                 </StickyNote>
               ))}
-              {partnerTasks.length === 0 && (
-                <p className="px-1 text-[10px] italic text-[#a08a66]">No partner tasks yet.</p>
-              )}
             </div>
           </section>
         </div>
@@ -402,6 +421,27 @@ function WhiteboardModal() {
     repaint();
   }, [repaint]);
 
+  // While erasing, the cursor over the board is the eraser block itself,
+  // sized to the eraser stroke.
+  const eraserCursor = useMemo(() => {
+    if (!eraser) return undefined;
+    const w = Math.max(20, size * 3 * 1.8);
+    const h = Math.max(12, size * 3);
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d');
+    if (!ctx) return undefined;
+    ctx.fillStyle = '#4b5563';
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(1, 1, w - 2, h - 2, 3);
+    ctx.fill();
+    ctx.stroke();
+    return `url(${c.toDataURL()}) ${Math.round(w / 2)} ${Math.round(h / 2)}, cell`;
+  }, [eraser, size]);
+
   const toLocal = (e: ReactPointerEvent<HTMLCanvasElement>): [number, number] => {
     const r = e.currentTarget.getBoundingClientRect();
     return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height];
@@ -429,7 +469,7 @@ function WhiteboardModal() {
     if (ctx) {
       ctx.strokeStyle = eraser ? '#ffffff' : color;
       ctx.lineWidth = (eraser ? size * 3 : size) * BOARD_SCALE;
-      ctx.lineCap = 'round';
+      ctx.lineCap = eraser ? 'square' : 'round';
       ctx.beginPath();
       ctx.moveTo(px * BOARD_W * BOARD_SCALE, py * BOARD_H * BOARD_SCALE);
       ctx.lineTo(x * BOARD_W * BOARD_SCALE, y * BOARD_H * BOARD_SCALE);
@@ -463,7 +503,7 @@ function WhiteboardModal() {
           data-draw
           width={BOARD_W * BOARD_SCALE}
           height={BOARD_H * BOARD_SCALE}
-          style={{ width: BOARD_W, height: BOARD_H }}
+          style={{ width: BOARD_W, height: BOARD_H, ...(eraserCursor ? { cursor: eraserCursor } : {}) }}
           className="touch-none rounded-lg bg-white shadow-inner"
           onPointerDown={onDown}
           onPointerMove={onMove}
@@ -513,8 +553,8 @@ function WhiteboardModal() {
         <button
           onClick={() => setEraser((v) => !v)}
           title="Eraser"
-          className={`h-5 w-9 rounded-sm shadow-sm transition ${
-            eraser ? '-translate-y-1 bg-slate-100 ring-2 ring-white/70' : 'bg-slate-200/90 hover:-translate-y-0.5'
+          className={`h-5 w-9 rounded-sm bg-slate-600 shadow-sm transition ${
+            eraser ? '-translate-y-1 ring-2 ring-white/70' : 'hover:-translate-y-0.5'
           }`}
         />
         <button
@@ -538,8 +578,6 @@ function TimerModal() {
   const startTimer = useAppStore((s) => s.startTimer);
   const pauseTimer = useAppStore((s) => s.pauseTimer);
   const resetTimer = useAppStore((s) => s.resetTimer);
-  const setTimerMode = useAppStore((s) => s.setTimerMode);
-  const setTimerDurations = useAppStore((s) => s.setTimerDurations);
 
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -553,13 +591,6 @@ function TimerModal() {
   const mm = String(Math.floor(remaining / 60_000)).padStart(2, '0');
   const ss = String(Math.floor((remaining % 60_000) / 1000)).padStart(2, '0');
   const done = timer.isRunning && remaining <= 0;
-  const nextMode = timer.mode === 'WORK' ? 'BREAK' : 'WORK';
-  const digitColor = done ? '#ff8a80' : timer.mode === 'WORK' ? '#ffb060' : '#8fe3b0';
-
-  const tabCls = (active: boolean) =>
-    `flex-1 rounded-lg px-3 py-1 text-[11px] font-semibold transition ${
-      active ? 'bg-white text-[#7a4a1e] shadow-sm' : 'text-[#a5793f] hover:bg-black/5'
-    }`;
 
   return (
     <DragShell id="timer" className="w-[300px]">
@@ -575,75 +606,38 @@ function TimerModal() {
         <CloseButton bg="#c9622a" />
         {/* cream bezel */}
         <div className="space-y-2.5 rounded-2xl p-3" style={{ background: CREAM }}>
-          {/* digital face */}
-          <div className="rounded-xl px-3 pb-2 pt-1 text-center shadow-inner" style={{ background: SCREEN_BG }}>
-            <div className="font-mono text-[46px] font-bold leading-tight tabular-nums" style={{ color: digitColor }}>
+          {/* white face, black digits, pink progress */}
+          <div className="rounded-xl bg-white px-3 pb-2.5 pt-1 text-center shadow-inner ring-1 ring-black/10">
+            <div
+              className={`font-mono text-[46px] font-bold leading-tight tabular-nums text-[#1a1a1a] ${done ? 'animate-pulse' : ''}`}
+            >
               {mm}:{ss}
             </div>
-            <div className="pb-1 font-mono text-[11px] font-bold uppercase tracking-[0.3em]" style={{ color: '#6fa89b' }}>
-              {timer.mode === 'WORK' ? 'Focus' : 'Break'}
-            </div>
-            <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
+            <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-black/5">
               <div
                 className="h-full rounded-full transition-all"
                 style={{
                   width: `${totalMs > 0 ? (remaining / totalMs) * 100 : 0}%`,
-                  background: digitColor,
+                  background: '#f9c1d0',
                 }}
               />
             </div>
           </div>
 
-          <div className="flex gap-1 rounded-xl bg-black/5 p-1">
-            <button className={tabCls(timer.mode === 'WORK')} onClick={() => setTimerMode('WORK')}>
-              Focus
-            </button>
-            <button className={tabCls(timer.mode === 'BREAK')} onClick={() => setTimerMode('BREAK')}>
-              Break
-            </button>
-          </div>
-
-          {done ? (
+          <div className="flex gap-2">
             <button
-              onClick={() => {
-                setTimerMode(nextMode);
-                startTimer();
-              }}
-              className="w-full rounded-xl bg-emerald-500/90 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
+              onClick={timer.isRunning ? pauseTimer : startTimer}
+              className="flex-1 rounded-xl py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-110"
+              style={{ background: ORANGE }}
             >
-              Time's up — start {nextMode === 'WORK' ? 'focus' : 'break'}
+              {timer.isRunning ? 'Pause' : 'Start'}
             </button>
-          ) : (
-            <div className="flex gap-2">
-              <button
-                onClick={timer.isRunning ? pauseTimer : startTimer}
-                className="flex-1 rounded-xl py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-110"
-                style={{ background: ORANGE }}
-              >
-                {timer.isRunning ? 'Pause' : 'Start'}
-              </button>
-              <button
-                onClick={resetTimer}
-                className="rounded-xl bg-black/10 px-4 py-2 text-sm text-[#7a4a1e] transition hover:bg-black/15"
-              >
-                Reset
-              </button>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between text-[11px] text-[#a5793f]">
-            <span>
-              Focus{' '}
-              <button className="px-1 hover:text-[#7a4a1e]" onClick={() => setTimerDurations(timer.workMin - 5, timer.breakMin)}>−</button>
-              <span className="tabular-nums text-[#7a4a1e]">{timer.workMin}m</span>
-              <button className="px-1 hover:text-[#7a4a1e]" onClick={() => setTimerDurations(timer.workMin + 5, timer.breakMin)}>+</button>
-            </span>
-            <span>
-              Break{' '}
-              <button className="px-1 hover:text-[#7a4a1e]" onClick={() => setTimerDurations(timer.workMin, timer.breakMin - 1)}>−</button>
-              <span className="tabular-nums text-[#7a4a1e]">{timer.breakMin}m</span>
-              <button className="px-1 hover:text-[#7a4a1e]" onClick={() => setTimerDurations(timer.workMin, timer.breakMin + 1)}>+</button>
-            </span>
+            <button
+              onClick={resetTimer}
+              className="rounded-xl bg-black/10 px-4 py-2 text-sm text-[#7a4a1e] transition hover:bg-black/15"
+            >
+              Reset
+            </button>
           </div>
         </div>
       </div>
@@ -693,117 +687,29 @@ function GlassPanel({
   );
 }
 
-function StatusDot({ status }: { status: string }) {
-  const cls =
-    status === 'CONNECTED'
-      ? 'bg-emerald-400'
-      : status === 'CONNECTING'
-        ? 'animate-pulse bg-amber-400'
-        : 'bg-rose-400/80';
-  return <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${cls}`} />;
-}
-
 function SettingsModal() {
   const role = useAppStore((s) => s.role);
   const setRole = useAppStore((s) => s.setRole);
-  const status = useAppStore((s) => s.connectionStatus);
 
   const roleBtn = (r: Role, label: string) => (
     <button
       onClick={() => setRole(r)}
-      className={`flex-1 rounded-xl border px-3 py-2.5 text-left transition ${
+      className={`flex-1 rounded-xl border px-3 py-2.5 text-center text-[13px] font-semibold text-slate-700 transition ${
         role === r
           ? 'border-sky-500/60 bg-sky-500/10'
           : 'border-slate-900/10 bg-white/50 hover:bg-white/80'
       }`}
     >
-      <div className="text-[13px] font-semibold text-slate-700">{label}</div>
-      <div className="mt-0.5 font-mono text-[10px] text-slate-400">{PEER_IDS[r]}</div>
+      {label}
     </button>
   );
 
   return (
-    <GlassPanel id="settings" title="Settings">
-      <div className="space-y-4 text-[12px]">
-        <section>
-          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-            My identity
-          </div>
-          <div className="flex gap-2">
-            {roleBtn('USER_A', 'User A')}
-            {roleBtn('USER_B', 'User B')}
-          </div>
-          <p className="mt-1.5 text-[11px] text-slate-400">
-            One desk must be User A and the other User B. Switching re-registers this overlay
-            under its static peer ID.
-          </p>
-        </section>
-        <section>
-          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-            Connection
-          </div>
-          <div className="flex items-center gap-2 rounded-xl bg-white/50 px-3 py-2 ring-1 ring-slate-900/10">
-            <StatusDot status={status} />
-            <span className="text-slate-600">
-              {status === 'CONNECTED' && `Linked with ${partnerOf(role) === 'USER_A' ? 'User A' : 'User B'}`}
-              {status === 'CONNECTING' && 'Looking for your partner…'}
-              {status === 'DISCONNECTED' && 'Offline'}
-            </span>
-          </div>
-          <p className="mt-1.5 text-[11px] text-slate-400">
-            Auto-connects whenever both overlays are open — no room codes or pairing steps.
-          </p>
-        </section>
+    <GlassPanel id="settings" title="Settings" width="w-[300px]">
+      <div className="flex gap-2">
+        {roleBtn('USER_A', 'User A (Lulu)')}
+        {roleBtn('USER_B', 'User B (Roro)')}
       </div>
-    </GlassPanel>
-  );
-}
-
-function SpeechModal() {
-  const current = useAppStore((s) => s.myBubble.text);
-  const setMyBubble = useAppStore((s) => s.setMyBubble);
-  const setActiveModal = useAppStore((s) => s.setActiveModal);
-  const [draft, setDraft] = useState(current);
-
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    setMyBubble(draft);
-    setActiveModal('NONE');
-  };
-
-  return (
-    <GlassPanel id="speech" title="Say something" width="w-[320px]">
-      <form onSubmit={submit} className="space-y-2">
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          autoFocus
-          maxLength={80}
-          placeholder="Type a message…"
-          className="w-full rounded-xl bg-white/70 px-3 py-2 text-[13px] text-slate-700 outline-none ring-1 ring-slate-900/10 placeholder:text-slate-400 focus:ring-sky-400/60"
-        />
-        <div className="flex gap-2">
-          <button
-            type="submit"
-            className="flex-1 rounded-xl bg-sky-500/90 py-1.5 text-[12px] font-semibold text-white transition hover:bg-sky-500"
-          >
-            Say it
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setMyBubble('');
-              setActiveModal('NONE');
-            }}
-            className="rounded-xl bg-slate-900/10 px-3 py-1.5 text-[12px] text-slate-600 transition hover:bg-slate-900/15"
-          >
-            Clear
-          </button>
-        </div>
-        <p className="text-[10px] text-slate-400">
-          Appears over your character for 30 seconds — your partner sees it too.
-        </p>
-      </form>
     </GlassPanel>
   );
 }
@@ -833,7 +739,7 @@ export function ModalLayer() {
       {activeModal === 'WHITEBOARD' && <WhiteboardModal />}
       {activeModal === 'TIMER' && <TimerModal />}
       {activeModal === 'SETTINGS' && <SettingsModal />}
-      {activeModal === 'SPEECH' && <SpeechModal />}
+      {/* SPEECH renders in-scene as an editable bubble over the character */}
     </div>
   );
 }

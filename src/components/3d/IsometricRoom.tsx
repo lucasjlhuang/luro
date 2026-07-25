@@ -448,8 +448,9 @@ function ClockScreen({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // White face, black digits, pink progress bar — matches the timer menu.
     const { timer } = useAppStore.getState();
-    ctx.fillStyle = '#12312e';
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, 256, 138);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -461,21 +462,21 @@ function ClockScreen({
     const fullMs = (timer.mode === 'WORK' ? timer.workMin : timer.breakMin) * 60_000;
     const timerVisible = timer.isRunning || remaining < fullMs;
 
+    ctx.fillStyle = '#1a1a1a';
     if (timerVisible) {
       const mm = String(Math.floor(remaining / 60_000)).padStart(2, '0');
       const ss = String(Math.floor((remaining % 60_000) / 1000)).padStart(2, '0');
-      ctx.fillStyle = timer.mode === 'WORK' ? '#ffb060' : '#8fe3b0';
       ctx.font = 'bold 74px Menlo, monospace';
-      ctx.fillText(`${mm}:${ss}`, 128, 58);
-      ctx.fillStyle = '#6fa89b';
-      ctx.font = 'bold 20px Menlo, monospace';
-      ctx.fillText(timer.mode === 'WORK' ? 'FOCUS' : 'BREAK', 128, 118);
+      ctx.fillText(`${mm}:${ss}`, 128, 56);
+      ctx.fillStyle = '#f2eaec';
+      ctx.fillRect(24, 104, 208, 14);
+      ctx.fillStyle = '#f9c1d0';
+      ctx.fillRect(24, 104, 208 * (fullMs > 0 ? remaining / fullMs : 0), 14);
     } else {
       const now = new Date();
       const colon = now.getSeconds() % 2 === 0 ? ':' : ' ';
       const hh = String(now.getHours()).padStart(2, '0');
       const min = String(now.getMinutes()).padStart(2, '0');
-      ctx.fillStyle = '#ffcf8a';
       ctx.font = 'bold 80px Menlo, monospace';
       ctx.fillText(`${hh}${colon}${min}`, 128, 69);
     }
@@ -596,11 +597,13 @@ function Corkboard3D() {
   const partnerTasks = useAppStore((s) => s.partnerTasks);
 
   const stickies = useMemo(() => {
+    // Same palette as the corkboard menu: yellow to-do, blue in-progress,
+    // pink partner.
     const mine = myTasks.map((t) => ({
       key: t.id,
-      color: t.status === 'IN_PROGRESS' ? P.yellow : P.orangeSoft,
+      color: t.status === 'IN_PROGRESS' ? '#a8d8ea' : '#ffe66b',
     }));
-    const theirs = partnerTasks.map((t) => ({ key: `p-${t.id}`, color: P.teal }));
+    const theirs = partnerTasks.map((t) => ({ key: `p-${t.id}`, color: '#f9c1d0' }));
     // One sticky per task (max 10). Each note hashes to a preferred slot
     // in a 5x2 grid, probing forward when taken, then gets a seeded
     // jitter and tilt — thrown-on look without notes burying each other.

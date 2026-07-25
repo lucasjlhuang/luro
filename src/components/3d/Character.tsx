@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { ThreeEvent, useFrame } from '@react-three/fiber';
 import { Html, RoundedBox } from '@react-three/drei';
@@ -24,12 +24,47 @@ const WALK_SPEED = 1.05;
 const SKIN = '#f6e0c0';
 const MAT = { roughness: 0.85, metalness: 0.05 };
 
-/** Status choices shown as bubbles above the villager's head. */
-const STATUS_OPTIONS: Array<{ value: CharacterStatus; icon: string; label: string }> = [
-  { value: 'IDLE', icon: '🚶', label: 'Idle — wander around' },
-  { value: 'WORKING', icon: '💻', label: 'Working — sit at the desk' },
-  { value: 'SLEEPING', icon: '😴', label: 'Sleeping — lie on the bed' },
-];
+/** Drop zones shown while carrying the villager: bed and both chairs. */
+const CHAIR_XS = [0.62, -0.42];
+const CHAIR_Z = -1.2;
+const CHAIR_RADIUS = 0.55;
+const BED_RECT = { minX: -3.15, maxX: 0.85, minZ: -0.45, maxZ: 2.15 };
+
+/** Editable speech bubble that floats over the villager's head. */
+function BubbleEditor({ onClose }: { onClose: () => void }) {
+  const setMyBubble = useAppStore((s) => s.setMyBubble);
+  const [draft, setDraft] = useState(() => useAppStore.getState().myBubble.text);
+  return (
+    <div
+      data-interactive
+      className="relative rounded-2xl border-2 border-[#d8d2c2] bg-[#fdfcf6] px-3 py-2 shadow-lg"
+      style={{ minWidth: 190 }}
+    >
+      <button
+        onClick={onClose}
+        aria-label="Close"
+        className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[#d8d2c2] text-[9px] font-bold text-[#6b5b4a] shadow"
+      >
+        ✕
+      </button>
+      <input
+        autoFocus
+        value={draft}
+        maxLength={80}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            setMyBubble(draft);
+            onClose();
+          }
+        }}
+        placeholder="Say something…"
+        className="w-full bg-transparent text-[13px] text-[#33302a] outline-none placeholder:text-[#b8ac96]"
+      />
+      <span className="absolute -bottom-2 left-1/2 h-3.5 w-3.5 -translate-x-1/2 rotate-45 border-b-2 border-r-2 border-[#d8d2c2] bg-[#fdfcf6]" />
+    </div>
+  );
+}
 
 /** Two villagers: USER_A is the boy, USER_B the girl. */
 const LOOKS = {
@@ -276,6 +311,8 @@ interface SimState {
   tele: Tele;
   teleT: number;
   dragging: boolean;
+  /** Which chair to work at — set by dropping the villager on one. */
+  chairX: number;
 }
 
 interface PuffState {
@@ -295,14 +332,14 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
   const role = useAppStore((s) => (variant === 'me' ? s.role : partnerOf(s.role)));
   const look = LOOKS[role];
 
-  // Status bubbles hover over the head while the speech input is open.
-  const pickerOpen = useAppStore((s) => variant === 'me' && s.activeModal === 'SPEECH');
-  const myStatus = useAppStore((s) => s.myStatus);
-  const setMyStatus = useAppStore((s) => s.setMyStatus);
+  // The editable speech bubble replaces the old speech menu.
+  const editing = useAppStore((s) => variant === 'me' && s.activeModal === 'SPEECH');
+  // Reactive mirror of sim.dragging so drop markers can mount/unmount.
+  const [dragActive, setDragActive] = useState(false);
 
   const root = useRef<THREE.Group>(null!);
   const body = useRef<THREE.Group>(null!);
-  const pickerAnchor = useRef<THREE.Group>(null!);
+  const overheadAnchor = useRef<THREE.Group>(null!);
   const torso = useRef<THREE.Group>(null!);
   const head = useRef<THREE.Group>(null!);
   const armL = useRef<THREE.Group>(null!);
@@ -373,6 +410,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     tele: 'none',
     teleT: 0,
     dragging: false,
+    chairX: spots.chairX,
   });
 
   const firePuff = (x: number, y: number, z: number) => {
@@ -386,7 +424,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
   /** Anchor position + pose for a posed status; waypoint (or the live
    *  streamed position for the partner) for IDLE. */
   const destinationFor = (st: CharacterStatus, s: SimState, remote: CharPos | null) => {
-    if (st === 'WORKING') return { x: spots.chairX, z: -1.18, yaw: Math.PI };
+    if (st === 'WORKING') return { x: s.chairX, z: -1.18, yaw: Math.PI };
     if (st === 'SLEEPING') return { x: -0.55, z: spots.lieZ, yaw: -Math.PI / 2 };
     if (remote) return { x: remote.x, z: remote.z, yaw: remote.yaw as number | null };
     const wp = spots.idle[s.wp % spots.idle.length];
@@ -404,6 +442,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
       if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > 6) {
         dragging = true;
         sim.current.dragging = true;
+        setDragActive(true);
         setForceInteractive(true);
         lockCursor(CURSOR.grab);
         // A carried villager stops holding furniture poses.
@@ -420,8 +459,21 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
       setCursor(CURSOR.open);
       if (dragging) {
         sim.current.dragging = false;
-        sim.current.phase = 'settle'; // stand at the drop point for a beat
-        sim.current.dwell = 0;
+        setDragActive(false);
+        // Dropped on a marked zone? Bed puts them to sleep, either
+        // chair puts them to work there; anywhere else they roam.
+        const sx = sim.current.x;
+        const sz = sim.current.z;
+        const chair = CHAIR_XS.find((cx) => Math.hypot(sx - cx, sz - CHAIR_Z) < CHAIR_RADIUS);
+        if (sx > BED_RECT.minX && sx < BED_RECT.maxX && sz > BED_RECT.minZ && sz < BED_RECT.maxZ) {
+          useAppStore.getState().setMyStatus('SLEEPING');
+        } else if (chair !== undefined) {
+          sim.current.chairX = chair;
+          useAppStore.getState().setMyStatus('WORKING');
+        } else {
+          sim.current.phase = 'settle'; // stand at the drop point for a beat
+          sim.current.dwell = 0;
+        }
       } else {
         useAppStore.getState().setActiveModal('SPEECH');
       }
@@ -640,14 +692,14 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     zzz.current.position.set(s.x - 0.55, 1.5 + Math.sin(t * 1.2) * 0.06, s.z);
     zzz.current.quaternion.copy(frame.camera.quaternion);
 
-    /* ---------- status picker anchor ---------- */
-    if (pickerAnchor.current) {
-      pickerAnchor.current.position.set(s.x, root.current.position.y + HEAD_TOP + 0.35, s.z);
+    /* ---------- overhead anchor (bubble editor) ---------- */
+    if (overheadAnchor.current) {
+      overheadAnchor.current.position.set(s.x, root.current.position.y + HEAD_TOP + 0.35, s.z);
     }
 
-    /* ---------- speech bubble ---------- */
+    /* ---------- speech bubble (hidden while editing) ---------- */
     const age = Date.now() - bubble.updatedAt;
-    const bubbleVisible = bubble.text.length > 0 && age < BUBBLE_TTL;
+    const bubbleVisible = bubble.text.length > 0 && age < BUBBLE_TTL && !editing;
     const fade = bubbleVisible ? Math.min(1, (BUBBLE_TTL - age) / 3000) : 0;
     bubbleMat.current.opacity = damp(bubbleMat.current.opacity, fade * s.scale, 8);
     const headY = root.current.position.y + (lieE > 0.5 ? 0.6 : 1.3);
@@ -899,34 +951,37 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
         </group>
       ))}
 
-      {/* status bubbles above the head while the speech input is open */}
+      {/* editable speech bubble over the head */}
       {variant === 'me' && (
-        <group ref={pickerAnchor}>
-          {pickerOpen && (
+        <group ref={overheadAnchor}>
+          {editing && (
             <Html center zIndexRange={[15, 0]}>
-              <div
-                data-interactive
-                className="flex items-center gap-1.5 rounded-full border border-white/60 bg-white/70 px-2 py-1.5 shadow-lg backdrop-blur-xl"
-              >
-                {STATUS_OPTIONS.map((o) => (
-                  <button
-                    key={o.value}
-                    onClick={() => setMyStatus(o.value)}
-                    title={o.label}
-                    aria-label={o.label}
-                    className={`flex h-7 w-7 items-center justify-center rounded-full text-[15px] leading-none transition ${
-                      myStatus === o.value
-                        ? 'bg-sky-500/20 ring-2 ring-sky-400'
-                        : 'opacity-60 hover:bg-slate-900/10 hover:opacity-100'
-                    }`}
-                  >
-                    {o.icon}
-                  </button>
-                ))}
-              </div>
+              <BubbleEditor onClose={() => useAppStore.getState().setActiveModal('NONE')} />
             </Html>
           )}
         </group>
+      )}
+
+      {/* drop-zone markers while carrying: bed to sleep, chairs to work */}
+      {variant === 'me' && dragActive && (
+        <>
+          <group position={[-1.15, 1.7, 0.85]}>
+            <Html center zIndexRange={[14, 0]} style={{ pointerEvents: 'none' }}>
+              <div className="flex h-9 w-9 animate-bounce items-center justify-center rounded-full border border-white/70 bg-white/85 text-[17px] shadow-lg backdrop-blur">
+                😴
+              </div>
+            </Html>
+          </group>
+          {CHAIR_XS.map((cx) => (
+            <group key={cx} position={[cx, 1.5, CHAIR_Z]}>
+              <Html center zIndexRange={[14, 0]} style={{ pointerEvents: 'none' }}>
+                <div className="flex h-9 w-9 animate-bounce items-center justify-center rounded-full border border-white/70 bg-white/85 text-[17px] shadow-lg backdrop-blur">
+                  💻
+                </div>
+              </Html>
+            </group>
+          ))}
+        </>
       )}
 
       {/* floating Zzz while asleep */}
