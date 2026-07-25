@@ -8,6 +8,11 @@ import { renderStrokes } from '../../lib/strokes';
 import { panBy, savePan } from '../../lib/pan';
 import { CURSOR, CursorSpec, lockCursor, setCursor, unlockCursor } from '../../lib/cursors';
 import Character from './Character';
+import Prop from './Prop';
+import djungelskogUrl from '../../assets/models/djungelskog.glb?url';
+import pokemonCardsUrl from '../../assets/models/pokemon-cards.glb?url';
+import spaceMarineUrl from '../../assets/models/space-marine.glb?url';
+import cardPacksUrl from '../../assets/models/card-packs.glb?url';
 
 /* ------------------------------------------------------------------ */
 /* Palette — tuned to the cozy teal/wood/orange reference render      */
@@ -826,88 +831,6 @@ function StarPillow({ position, rotation }: { position: [number, number, number]
   );
 }
 
-/** Djungelskog-style brown teddy bear sitting propped on the bed. */
-function Djungelskog({
-  position,
-  rotation = [0, 0, 0],
-  scale = 1,
-}: {
-  position: [number, number, number];
-  rotation?: [number, number, number];
-  scale?: number;
-}) {
-  const FUR = '#7d5940';
-  const FUR_DARK = '#6b4a34';
-  const MUZZLE = '#c9a680';
-  return (
-    <group position={position} rotation={rotation} scale={scale}>
-      {/* round belly */}
-      <mesh position={[0, 0.2, 0]} scale={[1, 0.95, 0.85]} castShadow>
-        <sphereGeometry args={[0.22, 18, 18]} />
-        <meshStandardMaterial color={FUR} {...CLAY} />
-      </mesh>
-      <mesh position={[0, 0.18, 0.13]} scale={[0.85, 1, 0.6]}>
-        <sphereGeometry args={[0.13, 14, 14]} />
-        <meshStandardMaterial color={MUZZLE} {...CLAY} />
-      </mesh>
-      {/* head */}
-      <mesh position={[0, 0.47, 0.02]} castShadow>
-        <sphereGeometry args={[0.17, 18, 18]} />
-        <meshStandardMaterial color={FUR} {...CLAY} />
-      </mesh>
-      {/* ears */}
-      {[-0.12, 0.12].map((x) => (
-        <mesh key={x} position={[x, 0.61, -0.01]} castShadow>
-          <sphereGeometry args={[0.055, 12, 12]} />
-          <meshStandardMaterial color={FUR_DARK} {...CLAY} />
-        </mesh>
-      ))}
-      {/* muzzle + nose + eyes */}
-      <mesh position={[0, 0.43, 0.14]} scale={[1.15, 0.8, 0.8]}>
-        <sphereGeometry args={[0.075, 14, 14]} />
-        <meshStandardMaterial color={MUZZLE} {...CLAY} />
-      </mesh>
-      <mesh position={[0, 0.455, 0.2]}>
-        <sphereGeometry args={[0.028, 10, 10]} />
-        <meshStandardMaterial color="#2e2119" roughness={0.4} />
-      </mesh>
-      {/* eyes proud of the head surface so they actually read */}
-      {[-0.065, 0.065].map((x) => (
-        <mesh key={x} position={[x, 0.52, 0.175]}>
-          <sphereGeometry args={[0.022, 10, 10]} />
-          <meshStandardMaterial color="#2e2119" roughness={0.3} />
-        </mesh>
-      ))}
-      {/* arms hanging down, splayed slightly outward */}
-      {[-1, 1].map((side) => (
-        <mesh
-          key={side}
-          position={[side * 0.21, 0.24, 0.03]}
-          rotation={[0, 0, side * 0.3]}
-          scale={[1, 1.7, 1]}
-          castShadow
-        >
-          <sphereGeometry args={[0.065, 12, 12]} />
-          <meshStandardMaterial color={FUR} {...CLAY} />
-        </mesh>
-      ))}
-      {/* legs sticking forward with paw pads */}
-      {[-0.11, 0.11].map((x) => (
-        <group key={x}>
-          <mesh position={[x, 0.09, 0.16]} scale={[1, 0.9, 1.7]} castShadow>
-            <sphereGeometry args={[0.07, 12, 12]} />
-            <meshStandardMaterial color={FUR} {...CLAY} />
-          </mesh>
-          <mesh position={[x, 0.11, 0.27]} scale={[1, 1.15, 0.4]}>
-            <sphereGeometry args={[0.042, 10, 10]} />
-            <meshStandardMaterial color={MUZZLE} {...CLAY} />
-          </mesh>
-        </group>
-      ))}
-    </group>
-  );
-}
-
 /** A tee lying flat, slightly askew — like it was just thrown there. */
 function Shirt({
   position,
@@ -1007,8 +930,13 @@ function Bed() {
       <StarPillow position={[-1.38, 1.16, -0.6]} rotation={[-1.4, 0, 0.25]} />
       {/* shirt tossed on the bed's near-left corner */}
       <Shirt position={[1.2, 0.91, 0.85]} rotation={[0.02, 0.7, -0.03]} />
-      {/* Djungelskog propped against the pillows */}
-      <Djungelskog position={[-1.0, 0.84, -0.7]} rotation={[0, 0.85, 0]} scale={1.1} />
+      {/* the real Djungelskog, propped against the pillows */}
+      <Prop
+        url={djungelskogUrl}
+        position={[-1.0, 0.84, -0.7]}
+        rotationY={0.85}
+        fitSize={0.72}
+      />
     </group>
   );
 }
@@ -1310,6 +1238,11 @@ export default function IsometricRoom() {
         <LaundryBasket position={[2.65, 0, -2.55]} />
         <Monstera position={[-2.6, 0, -2.5]} rotationY={2.1} scale={0.92} />
         <ToyCar position={[-2.55, 0, 2.55]} rotationY={-0.6} />
+        {/* decor props: cards on the desk, packs by the front-right desk
+            leg, space marine standing guard by the rug's corner */}
+        <Prop url={pokemonCardsUrl} position={[1.0, 1.21, -1.72]} rotationY={0.4} fitAxis="x" fitSize={0.5} />
+        <Prop url={cardPacksUrl} position={[1.58, 0, -1.5]} rotationY={0.5} fitSize={0.34} />
+        <Prop url={spaceMarineUrl} position={[2.2, 0, 2.2]} rotationY={0.8} fitSize={0.85} />
         {/* Chairs enlarged to stay proportionate to the now-smaller desk. */}
         <DeskChair position={[0.62, 0, -1.2]} scale={1.12} />
         <DeskChair position={[-0.42, 0, -1.2]} scale={1.12} />

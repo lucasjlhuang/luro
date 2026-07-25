@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { Suspense, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import IsometricRoom from './components/3d/IsometricRoom';
@@ -71,7 +71,10 @@ export default function App() {
           onCreated={({ camera }) => camera.lookAt(0, 0.9, 0)}
         >
           <CameraRig />
-          <IsometricRoom />
+          {/* decor models load async; the room pops in when ready */}
+          <Suspense fallback={null}>
+            <IsometricRoom />
+          </Suspense>
         </Canvas>
       </div>
       <ModalLayer />
