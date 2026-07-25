@@ -43,7 +43,9 @@ const BUBBLE_STYLE: React.CSSProperties = {
   padding: '7px 14px',
   fontSize: 12,
   color: '#222',
-  transform: 'translateY(calc(-50% - 12px))',
+  // The bubble's bottom sits 22px above the anchor; the 14px tail hangs
+  // below it, leaving its tip ~8px over the head.
+  transform: 'translateY(calc(-50% - 22px))',
 };
 
 const BUBBLE_TAIL: React.CSSProperties = {
@@ -60,7 +62,15 @@ const BUBBLE_TAIL: React.CSSProperties = {
 /** Read-only bubble shown while a message is live. */
 function BubbleView({ text, opacity }: { text: string; opacity: number }) {
   return (
-    <div style={{ ...BUBBLE_STYLE, maxWidth: 220, opacity, transition: 'opacity 0.4s' }}>
+    <div
+      style={{
+        ...BUBBLE_STYLE,
+        width: 'max-content',
+        maxWidth: '25ch',
+        opacity,
+        transition: 'opacity 0.4s',
+      }}
+    >
       <span style={{ whiteSpace: 'pre-wrap', overflowWrap: 'break-word' }}>{text}</span>
       <span style={BUBBLE_TAIL} />
     </div>
@@ -70,7 +80,8 @@ function BubbleView({ text, opacity }: { text: string; opacity: number }) {
 /** Editable speech bubble that floats over the villager's head. */
 function BubbleEditor({ onClose }: { onClose: () => void }) {
   const setMyBubble = useAppStore((s) => s.setMyBubble);
-  const [draft, setDraft] = useState(() => useAppStore.getState().myBubble.text);
+  // Always opens empty — it composes a new message, not an edit.
+  const [draft, setDraft] = useState('');
   return (
     <div data-interactive style={{ ...BUBBLE_STYLE, minWidth: 180 }}>
       <button
@@ -191,7 +202,7 @@ const SIT_RAISE = 0.35; // hips onto the chair seat (~0.63 after 1.12x scale)
 const LIE_RAISE = 1.0; // body onto the mattress top (~0.86) plus half-thickness
 const TELE_OUT = 0.25;
 const TELE_IN = 0.3;
-const BUBBLE_TTL = 30_000;
+const BUBBLE_TTL = 5_000;
 const ROOM_CLAMP = 2.9;
 const CARRY_LIFT = 0.4; // how high a picked-up villager floats
 const HEAD_TOP = 1.36; // head centre (1.0) + radius (0.34) + hair, above the root
@@ -334,7 +345,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
   }, [bubble.text, bubble.updatedAt]);
   const bubbleAge = Date.now() - bubble.updatedAt;
   const bubbleShown = bubble.text.length > 0 && bubbleAge < BUBBLE_TTL;
-  const bubbleOpacity = bubbleShown ? Math.min(1, (BUBBLE_TTL - bubbleAge) / 3000) : 0;
+  const bubbleOpacity = bubbleShown ? Math.min(1, (BUBBLE_TTL - bubbleAge) / 1500) : 0;
   const puffGroups = [useRef<THREE.Group>(null!), useRef<THREE.Group>(null!)];
   // One shared material per puff so all particles fade together.
   const puffMaterials = useMemo(
@@ -664,9 +675,9 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     zzz.current.position.set(s.x - 0.55, 1.5 + Math.sin(t * 1.2) * 0.06, s.z);
     zzz.current.quaternion.copy(frame.camera.quaternion);
 
-    /* ---------- overhead anchor (bubble editor) ---------- */
+    /* ---------- overhead anchor (speech bubbles) ---------- */
     if (overheadAnchor.current) {
-      overheadAnchor.current.position.set(s.x, root.current.position.y + HEAD_TOP + 0.35, s.z);
+      overheadAnchor.current.position.set(s.x, root.current.position.y + HEAD_TOP, s.z);
     }
 
   });

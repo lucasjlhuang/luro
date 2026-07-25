@@ -239,23 +239,32 @@ function NotebookModal() {
 /* ------------------------------------------------------------------ */
 
 function noteTilt(id: string): number {
-  return ((id.charCodeAt(0) + id.length) % 5) - 2;
+  return ((id.charCodeAt(0) + id.length) % 9) - 4;
+}
+
+/** Scatter notes across the column so they look hand-pinned. */
+function noteAlign(id: string): string {
+  return ['self-start', 'self-center', 'self-end'][
+    (id.charCodeAt(id.length - 1) + id.length) % 3
+  ];
 }
 
 function StickyNote({
   color,
   tilt,
+  align = 'self-start',
   children,
   actions,
 }: {
   color: string;
   tilt: number;
+  align?: string;
   children: ReactNode;
   actions?: ReactNode;
 }) {
   return (
     <div
-      className="group relative px-2 pb-1.5 pt-3 text-[11px] leading-snug text-[#5b4a32] shadow-md"
+      className={`group relative w-[75%] px-2 pb-1.5 pt-3 text-[11px] leading-snug text-[#5b4a32] shadow-md ${align}`}
       style={{ background: color, transform: `rotate(${tilt}deg)`, aspectRatio: '1 / 1' }}
     >
       <span className="absolute left-1/2 top-1 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-red-500/80 shadow-sm" />
@@ -323,7 +332,7 @@ function CorkboardModal() {
             <TapeLabel>To Do · {todo.length}</TapeLabel>
             <form
               onSubmit={submit}
-              className="relative mb-2 rotate-1 px-2 pb-1.5 pt-3 shadow-md"
+              className="relative mb-2 w-[75%] rotate-1 px-2 pb-1.5 pt-3 shadow-md"
               style={{ background: '#ffe66b', aspectRatio: '1 / 1' }}
             >
               <span className="absolute left-1/2 top-1 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-red-500/80 shadow-sm" />
@@ -340,6 +349,7 @@ function CorkboardModal() {
                   key={t.id}
                   color="#ffe66b"
                   tilt={noteTilt(t.id)}
+                  align={noteAlign(t.id)}
                   actions={
                     <>
                       <NoteButton label="→" title="Start" onClick={() => updateTaskStatus(t.id, 'IN_PROGRESS')} />
@@ -361,6 +371,7 @@ function CorkboardModal() {
                   key={t.id}
                   color="#a8d8ea"
                   tilt={noteTilt(t.id)}
+                  align={noteAlign(t.id)}
                   actions={
                     <>
                       <NoteButton label="←" title="Back to To Do" onClick={() => updateTaskStatus(t.id, 'TODO')} />
@@ -378,7 +389,7 @@ function CorkboardModal() {
             <TapeLabel>Partner · {partnerTasks.length}</TapeLabel>
             <div className={listCls}>
               {partnerTasks.map((t) => (
-                <StickyNote key={t.id} color="#f9c1d0" tilt={noteTilt(t.id)}>
+                <StickyNote key={t.id} color="#f9c1d0" tilt={noteTilt(t.id)} align={noteAlign(t.id)}>
                   <span className="text-[#6b3a4a]">{t.text}</span>
                   <div className="mt-0.5 text-[8px] font-bold uppercase tracking-wider text-[#6b3a4a]/70">
                     {t.status === 'IN_PROGRESS' ? 'in progress' : 'to do'}
