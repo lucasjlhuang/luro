@@ -31,6 +31,16 @@ const MODELS: Record<Role, { url: string; height: number; yaw: number }> = {
 
 useGLTF.preload(roroUrl);
 
+/**
+ * Per-role model surgery, keyed by material name: hide parts (the hood
+ * has real hair underneath) and recolor others. Recolored materials are
+ * cloned so the two instances can differ despite sharing one GLB.
+ */
+const CUSTOMIZE: Record<Role, { hide: string[]; recolor: Record<string, string> }> = {
+  USER_A: { hide: ['outfit_hat'], recolor: { skin_hair: '#3b2a1d' } }, // Lulu: dark brown
+  USER_B: { hide: ['outfit_hat'], recolor: { skin_hair: '#a8815a' } }, // Roro: light brown
+};
+
 /** Clip names inside roro.glb, mapped to app states. */
 const CLIPS = {
   idle: 'Armatureidle_necromancer',
@@ -358,14 +368,23 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
     const scale = model.height / Math.max(size.y, 1e-6);
+    const custom = CUSTOMIZE[role];
     scene.traverse((obj) => {
       if (obj instanceof THREE.Mesh) {
         obj.castShadow = true;
         obj.frustumCulled = false; // skinned bounds are wrong mid-clip
+        const mat = (Array.isArray(obj.material) ? obj.material[0] : obj.material) as THREE.Material;
+        if (custom.hide.includes(mat.name)) obj.visible = false;
+        const recolor = custom.recolor[mat.name];
+        if (recolor && mat instanceof THREE.MeshStandardMaterial) {
+          const clone = mat.clone();
+          clone.color.set(recolor);
+          obj.material = clone;
+        }
       }
     });
     return { scale, offset: [-center.x, -box.min.y, -center.z] as const };
-  }, [scene, model.height]);
+  }, [scene, model.height, role]);
 
   /** Currently playing clip + one-shot flourish bookkeeping. */
   const currentClip = useRef<string | null>(null);
