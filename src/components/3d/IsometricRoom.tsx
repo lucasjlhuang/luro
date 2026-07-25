@@ -14,8 +14,12 @@ import Character from './Character';
 /* ------------------------------------------------------------------ */
 
 const P = {
-  wallTeal: '#2a9184',
-  wallTealSide: '#238073',
+  wallTeal: '#a5cede',
+  wallTealSide: '#96bfd4',
+  pink: '#f2a8bd',
+  brown: '#9c6b4a',
+  brownLight: '#b07f5c',
+  beige: '#e8d5b0',
   woodTrim: '#d9a563',
   woodMid: '#c99a5f',
   floorBase: '#d3a05e',
@@ -242,15 +246,15 @@ function CircularRug() {
     <group position={[0.3, 0, 0.3]}>
       <mesh position={[0, 0.1, 0]} receiveShadow raycast={() => null}>
         <cylinderGeometry args={[1.7, 1.7, 0.05, 56]} />
-        <meshStandardMaterial color={P.teal} {...CLAY} />
+        <meshStandardMaterial color={P.pink} {...CLAY} />
       </mesh>
       <mesh position={[0, 0.13, 0]} receiveShadow raycast={() => null}>
         <cylinderGeometry args={[1.26, 1.26, 0.045, 56]} />
-        <meshStandardMaterial color={P.cream} {...CLAY} />
+        <meshStandardMaterial color={P.white} {...CLAY} />
       </mesh>
       <mesh position={[0, 0.155, 0]} receiveShadow raycast={() => null}>
         <cylinderGeometry args={[0.63, 0.63, 0.04, 40]} />
-        <meshStandardMaterial color={P.orangeSoft} {...CLAY} />
+        <meshStandardMaterial color={P.pink} {...CLAY} />
       </mesh>
     </group>
   );
@@ -942,14 +946,14 @@ function Bed() {
       ))}
       {/* mattress */}
       <RoundedBox args={[3.72, 0.38, 2.36]} radius={0.12} position={[0.03, 0.67, 0]} castShadow>
-        <meshStandardMaterial color={P.white} {...CLAY} />
+        <meshStandardMaterial color={P.beige} {...CLAY} />
       </RoundedBox>
       {/* blanket reaching up to just under the pillows + folded edge */}
       <RoundedBox args={[2.9, 0.44, 2.44]} radius={0.13} position={[0.52, 0.66, 0]} castShadow>
-        <meshStandardMaterial color={P.teal} {...CLAY} />
+        <meshStandardMaterial color={P.brown} {...CLAY} />
       </RoundedBox>
       <RoundedBox args={[0.24, 0.46, 2.44]} radius={0.09} position={[-0.9, 0.67, 0]} castShadow>
-        <meshStandardMaterial color={P.cream} {...CLAY} />
+        <meshStandardMaterial color={P.brownLight} {...CLAY} />
       </RoundedBox>
       {/* sleeping pillows — each spans half the bed width */}
       {[-0.6, 0.6].map((z) => (
@@ -961,7 +965,7 @@ function Bed() {
           rotation={[0, 0, 0.12]}
           castShadow
         >
-          <meshStandardMaterial color={P.cream} {...CLAY} />
+          <meshStandardMaterial color={P.brown} {...CLAY} />
         </RoundedBox>
       ))}
       {/* star accent pillow stacked on the right sleeping pillow */}

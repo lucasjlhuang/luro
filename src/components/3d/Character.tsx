@@ -562,7 +562,8 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     body.current.position.y = bob * (1 - lieE);
 
     const swing = walking ? Math.sin(s.walkT) * 0.5 : 0;
-    const dangle = carried ? Math.sin(t * 5) * 0.18 : 0;
+    // Carried: a proper protest — arms and legs flail until let go.
+    const dangle = carried ? Math.sin(t * 8) * 0.45 : 0;
     const legPose = s.sit * -1.5;
     legL.current.rotation.x = damp(legL.current.rotation.x, swing + legPose + dangle, 12);
     legR.current.rotation.x = damp(legR.current.rotation.x, -swing + legPose - dangle, 12);
@@ -570,12 +571,12 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     const working = status === 'WORKING' && s.sit > 0.7 && !s.dragging;
     const armPoseL = working ? -1.05 + Math.sin(t * 10) * 0.08 : 0;
     const armPoseR = working ? -1.05 + Math.cos(t * 10 + 1) * 0.08 : 0;
-    const armTarget = carried ? 0.5 : walking ? -swing * 0.7 : armPoseL;
-    const armTargetR = carried ? 0.5 : walking ? swing * 0.7 : armPoseR;
+    const armTarget = carried ? 0.4 + Math.sin(t * 9 + 0.6) * 0.5 : walking ? -swing * 0.7 : armPoseL;
+    const armTargetR = carried ? 0.4 - Math.sin(t * 9) * 0.5 : walking ? swing * 0.7 : armPoseR;
     armL.current.rotation.x = damp(armL.current.rotation.x, armTarget, 12);
     armR.current.rotation.x = damp(armR.current.rotation.x, armTargetR, 12);
-    armL.current.rotation.z = damp(armL.current.rotation.z, carried ? 0.6 : 0, 10);
-    armR.current.rotation.z = damp(armR.current.rotation.z, carried ? -0.6 : 0, 10);
+    armL.current.rotation.z = damp(armL.current.rotation.z, carried ? 0.55 + Math.cos(t * 7) * 0.2 : 0, 10);
+    armR.current.rotation.z = damp(armR.current.rotation.z, carried ? -0.55 - Math.cos(t * 7 + 0.8) * 0.2 : 0, 10);
 
     torso.current.rotation.x = damp(
       torso.current.rotation.x,
