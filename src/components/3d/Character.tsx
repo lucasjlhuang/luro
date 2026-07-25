@@ -88,31 +88,43 @@ function BubbleView({ text }: { text: string }) {
 }
 
 /** Editable speech bubble that floats over the villager's head. */
+/** Shared 2D context for synchronous text measurement. */
+let measureCtx: CanvasRenderingContext2D | null = null;
+function getMeasureCtx(): CanvasRenderingContext2D | null {
+  if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
+  return measureCtx;
+}
+
 function BubbleEditor({ onClose }: { onClose: () => void }) {
   const setMyBubble = useAppStore((s) => s.setMyBubble);
   // Always opens empty — it composes a new message, not an edit.
   const [draft, setDraft] = useState('');
   const [focused, setFocused] = useState(false);
-
-  // Once typing starts the bubble shrinks to hug the text, then grows
-  // with it up to the cap. A hidden mirror span measures the draft.
-  const measure = useRef<HTMLSpanElement | null>(null);
   const [textW, setTextW] = useState(24);
+
+  // Measure with the input's real font via canvas — synchronous, so the
+  // width updates in the same frame as the keystroke (no catch-up jank).
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const fontRef = useRef('12px sans-serif');
   useEffect(() => {
-    if (measure.current) {
-      setTextW(Math.min(160, Math.max(24, measure.current.offsetWidth + 4)));
-    }
-  }, [draft]);
+    if (!inputRef.current) return;
+    const cs = getComputedStyle(inputRef.current);
+    fontRef.current =
+      cs.font || `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  }, []);
+  const widthFor = (text: string): number => {
+    const ctx = getMeasureCtx();
+    if (!ctx) return 137;
+    ctx.font = fontRef.current;
+    return Math.min(160, Math.max(24, ctx.measureText(text).width + 6));
+  };
+
+  // Resting: wide enough for the hint. Focused: collapse to the caret,
+  // then track the text as it grows.
+  const inputW = focused || draft ? (draft ? textW : 24) : 137;
 
   return (
-    <div data-interactive style={{ ...BUBBLE_STYLE, ...(draft ? {} : { minWidth: 155 }) }}>
-      <span
-        ref={measure}
-        aria-hidden
-        style={{ position: 'absolute', visibility: 'hidden', whiteSpace: 'pre', fontSize: 12 }}
-      >
-        {draft}
-      </span>
+    <div data-interactive style={{ ...BUBBLE_STYLE, ...(focused || draft ? {} : { minWidth: 155 }) }}>
       <button
         onClick={onClose}
         aria-label="Close"
@@ -130,9 +142,14 @@ function BubbleEditor({ onClose }: { onClose: () => void }) {
         </svg>
       </button>
       <input
+        ref={inputRef}
         value={draft}
         maxLength={80}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => {
+          const value = e.target.value;
+          setDraft(value);
+          setTextW(widthFor(value));
+        }}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         onKeyDown={(e) => {
@@ -145,8 +162,8 @@ function BubbleEditor({ onClose }: { onClose: () => void }) {
         placeholder={focused ? '' : 'Say something…'}
         className="placeholder:text-[#b0ada6]"
         style={{
-          width: draft ? textW : 137,
-          transition: 'width 0.12s ease-out',
+          width: inputW,
+          transition: 'width 0.18s cubic-bezier(0.2, 0, 0, 1)',
           background: 'transparent',
           outline: 'none',
           fontSize: 12,
