@@ -902,7 +902,7 @@ function Shirt({
     const ctx = c.getContext('2d');
     if (ctx) {
       for (let y = 0; y < 64; y += 4) {
-        ctx.fillStyle = (y / 4) % 2 === 0 ? '#33456e' : '#4a3260';
+        ctx.fillStyle = (y / 4) % 2 === 0 ? '#232f4e' : '#5a4074';
         ctx.fillRect(0, y, 64, 4);
       }
     }
@@ -927,12 +927,8 @@ function Shirt({
       {/* collar */}
       <mesh position={[0, 0.035, -0.26]} rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[0.09, 0.024, 8, 20]} />
-        <meshStandardMaterial color="#33456e" {...CLAY} />
+        <meshStandardMaterial color="#232f4e" {...CLAY} />
       </mesh>
-      {/* crumpled fold */}
-      <RoundedBox args={[0.3, 0.05, 0.26]} radius={0.025} position={[0.08, 0.045, 0.12]} rotation={[0, -0.35, 0]}>
-        <meshStandardMaterial map={stripes} {...CLAY} />
-      </RoundedBox>
     </group>
   );
 }
