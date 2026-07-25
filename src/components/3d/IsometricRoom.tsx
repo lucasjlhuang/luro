@@ -937,7 +937,7 @@ function Bed() {
         fitSize={0.72}
         matte
         envIntensity={0.7}
-        brightness={1.5}
+        brightness={2}
       />
     </group>
   );
