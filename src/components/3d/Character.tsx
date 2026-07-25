@@ -40,7 +40,7 @@ const BUBBLE_STYLE: React.CSSProperties = {
   background: '#ffffff',
   borderRadius: 10,
   boxShadow: '0 4px 20px rgba(0,0,0,0.18)',
-  padding: '7px 14px',
+  padding: '4.5px 14px',
   fontSize: 12,
   color: '#222',
   // The bubble's bottom sits 22px above the anchor; the 14px tail hangs
@@ -97,9 +97,12 @@ function BubbleEditor({ onClose }: { onClose: () => void }) {
       <button
         onClick={onClose}
         aria-label="Close"
-        className="absolute -right-1 -top-1 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-[#e8e4dc] text-[10px] font-bold leading-none text-[#6b5b4a] shadow"
+        className="absolute -right-1 -top-1 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-[#e8e4dc] shadow"
       >
-        ×
+        {/* SVG cross: dead-centre regardless of font metrics */}
+        <svg width="6" height="6" viewBox="0 0 6 6" aria-hidden>
+          <path d="M1 1l4 4M5 1L1 5" stroke="#6b5b4a" strokeWidth="1.4" strokeLinecap="round" />
+        </svg>
       </button>
       <input
         autoFocus
@@ -213,7 +216,7 @@ const LIE_RAISE = 1.0; // body onto the mattress top (~0.86) plus half-thickness
 const TELE_OUT = 0.25;
 const TELE_IN = 0.3;
 const BUBBLE_HOLD = 5_000; // fully visible
-const BUBBLE_FADE = 1_500; // then one gentle fade
+const BUBBLE_FADE = 1_000; // then one gentle fade
 const BUBBLE_TTL = BUBBLE_HOLD + BUBBLE_FADE;
 const ROOM_CLAMP = 2.9;
 const CARRY_LIFT = 0.4; // how high a picked-up villager floats
