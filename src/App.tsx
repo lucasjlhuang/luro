@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import IsometricRoom from './components/3d/IsometricRoom';
 import { ModalLayer } from './components/ui/Modals';
@@ -33,6 +34,29 @@ function CameraRig() {
       .addScaledVector(basis.up, pan.y / zoom);
     camera.updateMatrixWorld();
   });
+  return null;
+}
+
+/**
+ * Offline image-based lighting: imported PBR props (metallic paint,
+ * scanned fur) render near-black under plain lights. A generated room
+ * environment gives them reflections without network HDRIs; kept at low
+ * intensity so the clay furniture's look barely shifts.
+ */
+function SceneEnvironment() {
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+  useEffect(() => {
+    const pmrem = new THREE.PMREMGenerator(gl);
+    const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environment = envTex;
+    scene.environmentIntensity = 0.45;
+    return () => {
+      scene.environment = null;
+      envTex.dispose();
+      pmrem.dispose();
+    };
+  }, [gl, scene]);
   return null;
 }
 
@@ -71,6 +95,7 @@ export default function App() {
           onCreated={({ camera }) => camera.lookAt(0, 0.9, 0)}
         >
           <CameraRig />
+          <SceneEnvironment />
           {/* decor models load async; the room pops in when ready */}
           <Suspense fallback={null}>
             <IsometricRoom />

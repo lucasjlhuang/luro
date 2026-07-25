@@ -930,11 +930,12 @@ function Bed() {
       <StarPillow position={[-1.38, 1.16, -0.6]} rotation={[-1.4, 0, 0.25]} />
       {/* shirt tossed on the bed's near-left corner */}
       <Shirt position={[1.2, 0.91, 0.85]} rotation={[0.02, 0.7, -0.03]} />
-      {/* the real Djungelskog, propped against the pillows */}
+      {/* the real Djungelskog, propped against the pillows
+          (+200° so the scan faces into the room) */}
       <Prop
         url={djungelskogUrl}
         position={[-1.0, 0.84, -0.7]}
-        rotationY={0.85}
+        rotationY={0.85 + (200 * Math.PI) / 180}
         fitSize={0.72}
       />
     </group>
@@ -1238,11 +1239,11 @@ export default function IsometricRoom() {
         <LaundryBasket position={[2.65, 0, -2.55]} />
         <Monstera position={[-2.6, 0, -2.5]} rotationY={2.1} scale={0.92} />
         <ToyCar position={[-2.55, 0, 2.55]} rotationY={-0.6} />
-        {/* decor props: cards on the desk, packs by the front-right desk
-            leg, space marine standing guard by the rug's corner */}
-        <Prop url={pokemonCardsUrl} position={[1.0, 1.21, -1.72]} rotationY={0.4} fitAxis="x" fitSize={0.5} />
-        <Prop url={cardPacksUrl} position={[1.58, 0, -1.5]} rotationY={0.5} fitSize={0.34} />
-        <Prop url={spaceMarineUrl} position={[2.2, 0, 2.2]} rotationY={0.8} fitSize={0.85} />
+        {/* decor props: card spread + packs together on the desk's
+            front-left, space marine standing guard by the rug's corner */}
+        <Prop url={pokemonCardsUrl} position={[-1.0, 1.21, -1.72]} rotationY={0.4} fitAxis="x" fitSize={0.3} />
+        <Prop url={cardPacksUrl} position={[-0.55, 1.21, -1.72]} rotationY={0.2} fitAxis="x" fitSize={0.3} />
+        <Prop url={spaceMarineUrl} position={[2.2, 0, 2.2]} rotationY={0.8} fitSize={0.51} />
         {/* Chairs enlarged to stay proportionate to the now-smaller desk. */}
         <DeskChair position={[0.62, 0, -1.2]} scale={1.12} />
         <DeskChair position={[-0.42, 0, -1.2]} scale={1.12} />

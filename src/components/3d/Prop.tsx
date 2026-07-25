@@ -32,7 +32,17 @@ export default function Prop({
     const center = box.getCenter(new THREE.Vector3());
     const scale = fitSize / Math.max(size[fitAxis], 1e-6);
     scene.traverse((obj) => {
-      if (obj instanceof THREE.Mesh) obj.castShadow = true;
+      if (obj instanceof THREE.Mesh) {
+        obj.castShadow = true;
+        // Imported PBR materials lean hard on environment light — give
+        // them a boost so they sit in the room's brightness range.
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        for (const mat of mats) {
+          if (mat instanceof THREE.MeshStandardMaterial) {
+            mat.envMapIntensity = 1.4;
+          }
+        }
+      }
     });
     return {
       scale,
