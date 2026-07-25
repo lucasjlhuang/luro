@@ -59,16 +59,25 @@ const BUBBLE_TAIL: React.CSSProperties = {
   borderTopColor: '#ffffff',
 };
 
-/** Read-only bubble shown while a message is live. */
-function BubbleView({ text, opacity }: { text: string; opacity: number }) {
+/**
+ * Read-only bubble shown while a message is live: one continuous gentle
+ * fade across its whole lifetime, driven by a single CSS transition.
+ */
+function BubbleView({ text }: { text: string }) {
+  const [faded, setFaded] = useState(false);
+  useEffect(() => {
+    // Double rAF so the initial opacity paints before the fade starts.
+    const raf = requestAnimationFrame(() => requestAnimationFrame(() => setFaded(true)));
+    return () => cancelAnimationFrame(raf);
+  }, []);
   return (
     <div
       style={{
         ...BUBBLE_STYLE,
         width: 'max-content',
         maxWidth: '25ch',
-        opacity,
-        transition: 'opacity 0.4s',
+        opacity: faded ? 0 : 1,
+        transition: `opacity ${BUBBLE_TTL}ms linear`,
       }}
     >
       <span style={{ whiteSpace: 'pre-wrap', overflowWrap: 'break-word' }}>{text}</span>
@@ -87,7 +96,7 @@ function BubbleEditor({ onClose }: { onClose: () => void }) {
       <button
         onClick={onClose}
         aria-label="Close"
-        className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[#e8e4dc] text-[9px] font-bold text-[#6b5b4a] shadow"
+        className="absolute -right-1 -top-1 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-[#e8e4dc] text-[6px] font-bold text-[#6b5b4a] shadow"
       >
         ✕
       </button>
@@ -343,9 +352,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     const id = setInterval(() => setBubbleTick((t) => t + 1), 1000);
     return () => clearInterval(id);
   }, [bubble.text, bubble.updatedAt]);
-  const bubbleAge = Date.now() - bubble.updatedAt;
-  const bubbleShown = bubble.text.length > 0 && bubbleAge < BUBBLE_TTL;
-  const bubbleOpacity = bubbleShown ? Math.min(1, (BUBBLE_TTL - bubbleAge) / 1500) : 0;
+  const bubbleShown = bubble.text.length > 0 && Date.now() - bubble.updatedAt < BUBBLE_TTL;
   const puffGroups = [useRef<THREE.Group>(null!), useRef<THREE.Group>(null!)];
   // One shared material per puff so all particles fade together.
   const puffMaterials = useMemo(
@@ -934,7 +941,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
           </Html>
         ) : bubbleShown ? (
           <Html center zIndexRange={[13, 0]} style={{ pointerEvents: 'none' }}>
-            <BubbleView text={bubble.text} opacity={bubbleOpacity} />
+            <BubbleView key={bubble.updatedAt} text={bubble.text} />
           </Html>
         ) : null}
       </group>

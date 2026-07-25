@@ -136,7 +136,7 @@ function MarkdownView({ source }: { source: string }) {
     return null;
   }
   return (
-    <div className="space-y-1 text-[12px] leading-5 text-[#4a3c28]">
+    <div className="text-[12px] leading-6 text-[#4a3c28]">
       {source.split('\n').map((line, i) => {
         const key = `line-${i}`;
         if (line.startsWith('### '))
@@ -177,8 +177,8 @@ function MarkdownView({ source }: { source: string }) {
 
 const RULED_LINES = {
   backgroundImage:
-    'repeating-linear-gradient(to bottom, transparent 0px, transparent 19px, rgba(90,70,40,0.14) 19px, rgba(90,70,40,0.14) 20px)',
-  backgroundPositionY: '6px',
+    'repeating-linear-gradient(to bottom, transparent 0px, transparent 23px, rgba(90,70,40,0.14) 23px, rgba(90,70,40,0.14) 24px)',
+  backgroundPositionY: '4px',
 };
 
 const WORLD_NAMES: Record<Role, string> = {
@@ -209,7 +209,7 @@ function NotebookModal() {
                 value={myNotes}
                 onChange={(e) => setMyNotes(e.target.value)}
                 spellCheck={false}
-                className="flex-1 resize-none bg-transparent text-[12px] leading-5 text-[#4a3c28] outline-none"
+                className="flex-1 resize-none bg-transparent text-[12px] leading-6 text-[#4a3c28] outline-none"
                 style={NOTEBOOK_FONT}
               />
               {myNotes === '' && (
@@ -242,29 +242,20 @@ function noteTilt(id: string): number {
   return ((id.charCodeAt(0) + id.length) % 9) - 4;
 }
 
-/** Scatter notes across the column so they look hand-pinned. */
-function noteAlign(id: string): string {
-  return ['self-start', 'self-center', 'self-end'][
-    (id.charCodeAt(id.length - 1) + id.length) % 3
-  ];
-}
-
 function StickyNote({
   color,
   tilt,
-  align = 'self-start',
   children,
   actions,
 }: {
   color: string;
   tilt: number;
-  align?: string;
   children: ReactNode;
   actions?: ReactNode;
 }) {
   return (
     <div
-      className={`group relative w-[75%] px-2 pb-1.5 pt-3 text-[11px] leading-snug text-[#5b4a32] shadow-md ${align}`}
+      className="group relative w-[75%] self-center px-2 pb-1.5 pt-3 text-[11px] leading-snug text-[#5b4a32] shadow-md"
       style={{ background: color, transform: `rotate(${tilt}deg)`, aspectRatio: '1 / 1' }}
     >
       <span className="absolute left-1/2 top-1 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-red-500/80 shadow-sm" />
@@ -332,7 +323,7 @@ function CorkboardModal() {
             <TapeLabel>To Do · {todo.length}</TapeLabel>
             <form
               onSubmit={submit}
-              className="relative mb-2 w-[75%] rotate-1 px-2 pb-1.5 pt-3 shadow-md"
+              className="group relative mb-2 w-[75%] -rotate-1 self-center px-2 pb-1.5 pt-3 text-[11px] leading-snug shadow-md"
               style={{ background: '#ffe66b', aspectRatio: '1 / 1' }}
             >
               <span className="absolute left-1/2 top-1 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-red-500/80 shadow-sm" />
@@ -349,7 +340,6 @@ function CorkboardModal() {
                   key={t.id}
                   color="#ffe66b"
                   tilt={noteTilt(t.id)}
-                  align={noteAlign(t.id)}
                   actions={
                     <>
                       <NoteButton label="→" title="Start" onClick={() => updateTaskStatus(t.id, 'IN_PROGRESS')} />
@@ -371,7 +361,6 @@ function CorkboardModal() {
                   key={t.id}
                   color="#a8d8ea"
                   tilt={noteTilt(t.id)}
-                  align={noteAlign(t.id)}
                   actions={
                     <>
                       <NoteButton label="←" title="Back to To Do" onClick={() => updateTaskStatus(t.id, 'TODO')} />
@@ -389,7 +378,7 @@ function CorkboardModal() {
             <TapeLabel>Partner · {partnerTasks.length}</TapeLabel>
             <div className={listCls}>
               {partnerTasks.map((t) => (
-                <StickyNote key={t.id} color="#f9c1d0" tilt={noteTilt(t.id)} align={noteAlign(t.id)}>
+                <StickyNote key={t.id} color="#f9c1d0" tilt={noteTilt(t.id)}>
                   <span className="text-[#6b3a4a]">{t.text}</span>
                   <div className="mt-0.5 text-[8px] font-bold uppercase tracking-wider text-[#6b3a4a]/70">
                     {t.status === 'IN_PROGRESS' ? 'in progress' : 'to do'}
@@ -666,75 +655,6 @@ function TimerModal() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Settings + speech input keep the clean white glass                 */
-/* ------------------------------------------------------------------ */
-
-function GlassPanel({
-  id,
-  title,
-  width = 'w-[360px]',
-  children,
-}: {
-  id: string;
-  title: string;
-  width?: string;
-  children: ReactNode;
-}) {
-  const setActiveModal = useAppStore((s) => s.setActiveModal);
-  const { pos, startDrag } = useDragPanel(id);
-  return (
-    <div
-      data-interactive
-      style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}
-      className={`pointer-events-auto flex flex-col rounded-2xl border border-white/60 bg-white/65 text-slate-700 shadow-xl backdrop-blur-2xl ${width}`}
-    >
-      <div
-        data-drag-handle
-        onPointerDown={startDrag}
-        className="flex select-none items-center justify-between border-b border-slate-900/10 px-4 py-2.5"
-      >
-        <h2 className="text-sm font-semibold tracking-wide text-slate-600">{title}</h2>
-        <button
-          onClick={() => setActiveModal('NONE')}
-          aria-label="Close"
-          className="rounded-md px-2 py-0.5 text-slate-400 transition hover:bg-slate-900/10 hover:text-slate-700"
-        >
-          ✕
-        </button>
-      </div>
-      <div className="flex-1 overflow-hidden p-3">{children}</div>
-    </div>
-  );
-}
-
-function SettingsModal() {
-  const role = useAppStore((s) => s.role);
-  const setRole = useAppStore((s) => s.setRole);
-
-  const roleBtn = (r: Role, label: string) => (
-    <button
-      onClick={() => setRole(r)}
-      className={`flex-1 rounded-xl border px-3 py-2.5 text-center text-[13px] font-semibold text-slate-700 transition ${
-        role === r
-          ? 'border-sky-500/60 bg-sky-500/10'
-          : 'border-slate-900/10 bg-white/50 hover:bg-white/80'
-      }`}
-    >
-      {label}
-    </button>
-  );
-
-  return (
-    <GlassPanel id="settings" title="Settings" width="w-[300px]">
-      <div className="flex gap-2">
-        {roleBtn('USER_A', 'Lulu')}
-        {roleBtn('USER_B', 'Roro')}
-      </div>
-    </GlassPanel>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /* Modal layer                                                        */
 /* ------------------------------------------------------------------ */
 
@@ -758,7 +678,6 @@ export function ModalLayer() {
       {activeModal === 'CORKBOARD' && <CorkboardModal />}
       {activeModal === 'WHITEBOARD' && <WhiteboardModal />}
       {activeModal === 'TIMER' && <TimerModal />}
-      {activeModal === 'SETTINGS' && <SettingsModal />}
       {/* SPEECH renders in-scene as an editable bubble over the character */}
     </div>
   );

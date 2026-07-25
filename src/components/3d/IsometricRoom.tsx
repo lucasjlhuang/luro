@@ -1,7 +1,7 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { ThreeEvent, useFrame, useThree } from '@react-three/fiber';
-import { RoundedBox } from '@react-three/drei';
+import { Html, RoundedBox } from '@react-three/drei';
 import { useAppStore } from '../../store/useAppStore';
 import { registerHitTest, setForceInteractive } from '../../lib/hitTest';
 import { renderStrokes } from '../../lib/strokes';
@@ -1049,9 +1049,16 @@ function DeskChair({
   );
 }
 
-/** Pencil cup with pens leaning at odd angles — opens Settings. */
+/**
+ * Pencil cup with pens leaning at odd angles. Clicking it pops the two
+ * circular identity buttons (Lulu / Roro) right above the cup — the
+ * whole settings surface, no menu.
+ */
 function PencilCup({ position }: { position: [number, number, number] }) {
   const setActiveModal = useAppStore((s) => s.setActiveModal);
+  const open = useAppStore((s) => s.activeModal === 'SETTINGS');
+  const role = useAppStore((s) => s.role);
+  const setRole = useAppStore((s) => s.setRole);
   const pens: Array<{ x: number; z: number; tiltX: number; tiltZ: number; h: number; color: string }> = [
     { x: 0.03, z: 0.02, tiltX: 0.1, tiltZ: 0.08, h: 0.34, color: '#e8b25c' },
     { x: -0.04, z: 0.03, tiltX: -0.06, tiltZ: -0.14, h: 0.3, color: P.orange },
@@ -1060,9 +1067,33 @@ function PencilCup({ position }: { position: [number, number, number] }) {
     { x: -0.02, z: -0.01, tiltX: 0.14, tiltZ: -0.04, h: 0.36, color: P.leafDark },
   ];
   return (
-    <Interactive position={position} onSelect={() => setActiveModal('SETTINGS')}>
+    <Interactive position={position} onSelect={() => setActiveModal(open ? 'NONE' : 'SETTINGS')}>
       {(hovered) => (
         <>
+          {open && (
+            <group position={[0, 0.95, 0]}>
+              <Html center zIndexRange={[15, 0]}>
+                <div data-interactive className="flex gap-1.5">
+                  {(['USER_A', 'USER_B'] as const).map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => {
+                        setRole(r);
+                        setActiveModal('NONE');
+                      }}
+                      className={`flex h-9 w-9 items-center justify-center rounded-full border text-[10px] font-bold shadow-lg backdrop-blur transition ${
+                        role === r
+                          ? 'border-sky-400 bg-sky-100/90 text-sky-700 ring-2 ring-sky-400'
+                          : 'border-white/70 bg-white/85 text-slate-600 hover:bg-white'
+                      }`}
+                    >
+                      {r === 'USER_A' ? 'Lulu' : 'Roro'}
+                    </button>
+                  ))}
+                </div>
+              </Html>
+            </group>
+          )}
           <mesh position={[0, 0.13, 0]} castShadow>
             <cylinderGeometry args={[0.11, 0.09, 0.26, 20]} />
             <meshStandardMaterial
