@@ -40,7 +40,7 @@ const BUBBLE_STYLE: React.CSSProperties = {
   background: '#ffffff',
   borderRadius: 10,
   boxShadow: '0 4px 20px rgba(0,0,0,0.18)',
-  padding: '4.5px 14px',
+  padding: '4.5px 9px',
   fontSize: 12,
   color: '#222',
   // The bubble's bottom sits 22px above the anchor; the 14px tail hangs
@@ -93,11 +93,11 @@ function BubbleEditor({ onClose }: { onClose: () => void }) {
   // Always opens empty — it composes a new message, not an edit.
   const [draft, setDraft] = useState('');
   return (
-    <div data-interactive style={{ ...BUBBLE_STYLE, minWidth: 180 }}>
+    <div data-interactive style={{ ...BUBBLE_STYLE, minWidth: 155 }}>
       <button
         onClick={onClose}
         aria-label="Close"
-        className="absolute -right-1 -top-1 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-[#e8e4dc] shadow"
+        className="absolute -right-1 -top-1 flex h-[13px] w-[13px] items-center justify-center rounded-full bg-[#e8e4dc] shadow"
       >
         {/* SVG cross: dead-centre regardless of font metrics */}
         <svg width="6" height="6" viewBox="0 0 6 6" aria-hidden>
