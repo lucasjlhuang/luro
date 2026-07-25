@@ -93,8 +93,26 @@ function BubbleEditor({ onClose }: { onClose: () => void }) {
   // Always opens empty — it composes a new message, not an edit.
   const [draft, setDraft] = useState('');
   const [focused, setFocused] = useState(false);
+
+  // Once typing starts the bubble shrinks to hug the text, then grows
+  // with it up to the cap. A hidden mirror span measures the draft.
+  const measure = useRef<HTMLSpanElement | null>(null);
+  const [textW, setTextW] = useState(24);
+  useEffect(() => {
+    if (measure.current) {
+      setTextW(Math.min(160, Math.max(24, measure.current.offsetWidth + 4)));
+    }
+  }, [draft]);
+
   return (
-    <div data-interactive style={{ ...BUBBLE_STYLE, minWidth: 155 }}>
+    <div data-interactive style={{ ...BUBBLE_STYLE, ...(draft ? {} : { minWidth: 155 }) }}>
+      <span
+        ref={measure}
+        aria-hidden
+        style={{ position: 'absolute', visibility: 'hidden', whiteSpace: 'pre', fontSize: 12 }}
+      >
+        {draft}
+      </span>
       <button
         onClick={onClose}
         aria-label="Close"
@@ -112,7 +130,6 @@ function BubbleEditor({ onClose }: { onClose: () => void }) {
         </svg>
       </button>
       <input
-        autoFocus
         value={draft}
         maxLength={80}
         onChange={(e) => setDraft(e.target.value)}
@@ -124,11 +141,12 @@ function BubbleEditor({ onClose }: { onClose: () => void }) {
             onClose();
           }
         }}
-        // The hint hides as soon as the caret is in the field.
+        // Hint shows until the user clicks in; caret only appears then.
         placeholder={focused ? '' : 'Say something…'}
         className="placeholder:text-[#b0ada6]"
         style={{
-          width: '100%',
+          width: draft ? textW : 137,
+          transition: 'width 0.12s ease-out',
           background: 'transparent',
           outline: 'none',
           fontSize: 12,
