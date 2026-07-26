@@ -102,7 +102,12 @@ Icons are generated from `src-tauri/app-icon.png` with `npx tauri icon src-tauri
 
 ## Compatibility
 
-macOS 11 Big Sur and later. The universal build carries both slices (Intel min 10.13, Apple
+macOS 11 Big Sur and later, **but WebGL2 is required**: three.js dropped WebGL1 in r163, so the
+renderer asks for a `webgl2` context and has no fallback. Big Sur ships Safari 14, where WebGL2
+was still behind a flag (default from Safari 15), and WKWebView uses whatever Safari is
+installed — so Big Sur works only if Safari has been updated to 15.6.1. Without it the renderer
+throws on construction, the app unmounts, and you get a blank transparent window; `src/boot.ts`
+detects that case up front and says so on screen instead. The universal build carries both slices (Intel min 10.13, Apple
 Silicon min 11.0), and Vite targets `safari14` because Big Sur's WKWebView tracks Safari 14–15.6
 — building with `esnext` can emit syntax that WebKit rejects outright, which shows up as a blank
 window rather than an error. If you ever raise that target, test on the oldest macOS you support.

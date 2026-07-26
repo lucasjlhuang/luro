@@ -3,10 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Desk Overlay</title>
+    <title>luro</title>
   </head>
   <body>
     <div id="root"></div>
+    <!-- Loaded first and separately: if the main bundle fails to parse, this
+         one has already installed the error handlers that report it. -->
+    <script type="module" src="/src/boot.ts"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
