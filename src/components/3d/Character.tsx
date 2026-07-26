@@ -32,117 +32,220 @@ const MODELS: Record<Role, { url: string; height: number; yaw: number }> = {
 useGLTF.preload(roroUrl);
 
 /**
- * Per-role model surgery, keyed by material name: hide parts (the hood
- * has real hair underneath) and recolor others. Recolored materials are
- * cloned so the two instances can differ despite sharing one GLB.
+ * A band of a texture to repaint, selected by the source pixel's hue and
+ * saturation. Bands are tried in order; one with no `match` is the catch-all
+ * for everything the earlier bands left over.
  */
-const CUSTOMIZE: Record<Role, { hide: string[]; recolor: Record<string, string> }> = {
-  USER_A: { hide: ['outfit_hat'], recolor: { skin_hair: '#3b2a1d' } }, // Lulu: dark brown
+type Band = { match?: (hue: number, sat: number) => boolean; to: string };
+
+/* The robe, its sash and its hem trim all share ONE material and ONE atlas,
+ * so they can only be told apart by colour: the cloth is desaturated purple,
+ * while the sash/trim are the saturated blue and gold runs. Widen or narrow
+ * these two predicates to move the pink/green boundary. */
+const isTrimGold = (h: number, s: number) => h >= 20 && h <= 70 && s >= 0.2;
+const isTrimBlue = (h: number, s: number) => h >= 185 && h <= 248 && s >= 0.35;
+
+/**
+ * Per-role model surgery, keyed by material name: hide parts (the hood has
+ * real hair underneath) and repaint others. Materials are cloned per instance
+ * so the two roles can differ despite sharing one GLB.
+ */
+const CUSTOMIZE: Record<Role, { hide: string[]; paint: Record<string, Band[]> }> = {
+  // Lulu is standing in with Roro's model — hair only, no outfit changes.
+  USER_A: { hide: ['outfit_hat'], paint: { skin_hair: [{ to: '#3b2a1d' }] } },
   USER_B: {
     hide: ['outfit_hat'],
-    recolor: {
-      skin_hair: '#a8815a', // light brown
-      outfit_body: '#cfe8b5', // light green robes
-      outfit_boots: '#f28bb4', // pink accents
+    paint: {
+      skin_hair: [{ to: '#893718' }], // light brown
+      outfit_body: [
+        { match: (h, s) => isTrimGold(h, s) || isTrimBlue(h, s), to: '#FF46A2' }, // sash + hem trim
+        { to: '#80EF80' }, // the dress itself
+      ],
+      // leave the white catchlights alone, recolour only the glowing iris
+      skin_eyes: [{ match: (_h, s) => s >= 0.25, to: '#50C878' }], // emerald
     },
   },
 };
 
-/*
- * Why recoloring this pack needs more than `material.color`:
- *
- * every material in roro.glb is FULLBRIGHT — baseColorFactor is pure black,
- * specularFactor 0, and all the visible colour lives in an emissive map with
- * emissiveFactor white. What you see is `emissive * emissiveMap`, so tinting
- * `.color` multiplies black by black and changes nothing (this is why the
- * hair stayed white).
- *
- * Tinting `.emissive` works, but a flat multiply inherits the map's own cast:
- * the hair map is pale BLUE-white (linear mean ~0.30/0.43/0.76), so brown
- * would come out blue-black. So divide the target by the map's per-channel
- * mean — the multiply then reproduces the requested colour on average while
- * keeping the baked shading gradient.
- */
-const TINT_CLAMP = 8;
-const meanCache = new WeakMap<THREE.Texture, THREE.Color | null>();
+/* ------------------------- texture repainting ------------------------- */
 
-/** Average lit texel of a texture, in linear space. Null if unreadable. */
-function textureMean(tex: THREE.Texture): THREE.Color | null {
-  if (meanCache.has(tex)) return meanCache.get(tex) ?? null;
-  let mean: THREE.Color | null = null;
+/**
+ * Everything in this pack is FULLBRIGHT — baseColorFactor is black and all the
+ * colour lives in an emissive map — so `material.color` is a no-op and even
+ * `material.emissive` can only tint a whole map at once. The dress and its
+ * trim share one atlas, so recolouring means rewriting pixels: classify each
+ * texel into a band by hue/saturation, then re-hue it.
+ *
+ * Lightness is carried across as an OFFSET from the band's own mean
+ * (`newL = targetL + (pixelL - meanL)`) rather than a multiply. That keeps the
+ * baked shading gradient at its original contrast and can't blow out — the
+ * robe's mean sits at L 0.20 and the target at 0.72, where a multiply would
+ * clip every highlight to white.
+ */
+const repaintCache = new WeakMap<THREE.Texture, Map<string, THREE.Texture>>();
+
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  r /= 255;
+  g /= 255;
+  b /= 255;
+  const mx = Math.max(r, g, b);
+  const mn = Math.min(r, g, b);
+  const l = (mx + mn) / 2;
+  const d = mx - mn;
+  if (!d) return [0, 0, l];
+  const s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+  let h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, s, l];
+}
+
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  h = (((h % 360) + 360) % 360) / 360; // must land in [0,1) — comp() only unwraps once
+  if (!s) return [l * 255, l * 255, l * 255];
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const comp = (t: number) => {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  return [comp(h + 1 / 3) * 255, comp(h) * 255, comp(h - 1 / 3) * 255];
+}
+
+/** Source texture -> a recoloured copy. Cached per (texture, band set). */
+function repaintTexture(tex: THREE.Texture, bands: Band[]): THREE.Texture | null {
+  const key = bands.map((b) => b.to).join('|');
+  let perTex = repaintCache.get(tex);
+  if (perTex?.has(key)) return perTex.get(key) ?? null;
+
+  let result: THREE.Texture | null = null;
   try {
     const img = tex.image as CanvasImageSource & { width?: number; height?: number };
-    if (img?.width && img?.height) {
-      const S = 64; // the average is all we need — downsample hard
+    const w = img?.width ?? 0;
+    const h = img?.height ?? 0;
+    if (w && h) {
       const canvas = document.createElement('canvas');
-      canvas.width = S;
-      canvas.height = S;
+      canvas.width = w;
+      canvas.height = h;
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       if (ctx) {
-        ctx.drawImage(img, 0, 0, S, S);
-        const { data } = ctx.getImageData(0, 0, S, S);
-        const lin = (v: number) => {
-          const c = v / 255;
-          return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-        };
-        let n = 0;
-        let r = 0;
-        let g = 0;
-        let b = 0;
-        for (let i = 0; i < data.length; i += 4) {
-          // skip the unused UV gutter, which is transparent or black
+        ctx.drawImage(img, 0, 0);
+        const image = ctx.getImageData(0, 0, w, h);
+        const { data } = image;
+
+        // pass 1: which band each texel belongs to, and each band's mean L
+        const bandOf = new Int8Array(w * h).fill(-1);
+        const sumL = new Float64Array(bands.length);
+        const count = new Float64Array(bands.length);
+        for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+          // skip the unused UV gutter: transparent or near-black
           if (data[i + 3] < 8 || data[i] + data[i + 1] + data[i + 2] < 12) continue;
-          n += 1;
-          r += lin(data[i]);
-          g += lin(data[i + 1]);
-          b += lin(data[i + 2]);
+          const [hue, sat, lum] = rgbToHsl(data[i], data[i + 1], data[i + 2]);
+          const b = bands.findIndex((band) => !band.match || band.match(hue, sat));
+          if (b < 0) continue;
+          bandOf[p] = b;
+          sumL[b] += lum;
+          count[b] += 1;
         }
-        if (n) mean = new THREE.Color(r / n, g / n, b / n); // numeric ctor = working (linear) space
+
+        // pass 2: re-hue, shifting lightness by the band's own offset.
+        // Parse the hex straight to sRGB bytes — the texels are in that same
+        // space, and going via THREE.Color would depend on whether colour
+        // management happens to be enabled.
+        const target = bands.map((b) => {
+          const n = parseInt(b.to.slice(1), 16);
+          return rgbToHsl((n >> 16) & 255, (n >> 8) & 255, n & 255);
+        });
+        for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+          const b = bandOf[p];
+          if (b < 0) continue;
+          const [, , lum] = rgbToHsl(data[i], data[i + 1], data[i + 2]);
+          const mean = count[b] ? sumL[b] / count[b] : lum;
+          const [tH, tS, tL] = target[b];
+          const [nr, ng, nb] = hslToRgb(tH, tS, THREE.MathUtils.clamp(tL + (lum - mean), 0, 1));
+          data[i] = nr;
+          data[i + 1] = ng;
+          data[i + 2] = nb;
+        }
+        ctx.putImageData(image, 0, 0);
+
+        const out = new THREE.CanvasTexture(canvas);
+        // GLTF textures are not flipped and carry their own wrapping/space
+        out.flipY = tex.flipY;
+        out.wrapS = tex.wrapS;
+        out.wrapT = tex.wrapT;
+        out.colorSpace = tex.colorSpace;
+        out.channel = tex.channel;
+        out.needsUpdate = true;
+        result = out;
       }
     }
   } catch {
-    mean = null; // tainted canvas / undecoded image — caller falls back
+    result = null; // tainted canvas / undecoded image — caller falls back to a flat tint
   }
-  meanCache.set(tex, mean);
-  return mean;
+
+  if (!perTex) {
+    perTex = new Map();
+    repaintCache.set(tex, perTex);
+  }
+  perTex.set(key, result as THREE.Texture);
+  return result;
 }
 
-/** Paint `hex` onto a material, whichever channel actually shows. */
-function tintMaterial(mat: THREE.Material, hex: string): void {
+/** Repaint a material's emissive map, or flat-tint it if the map is unreadable. */
+function paintMaterial(mat: THREE.Material, bands: Band[]): void {
   const m = mat as THREE.Material & {
     color?: THREE.Color;
     emissive?: THREE.Color;
     emissiveMap?: THREE.Texture | null;
   };
-  const target = new THREE.Color(hex); // hex string -> converted to linear
-  const fullbright = m.emissive && (!m.color || m.color.getHex() === 0x000000);
-  if (!fullbright) {
-    m.color?.set(hex); // ordinary PBR model (e.g. a future lulu.glb)
+  const repainted = m.emissiveMap ? repaintTexture(m.emissiveMap, bands) : null;
+  if (repainted) {
+    m.emissiveMap = repainted;
     return;
   }
-  const mean = m.emissiveMap ? textureMean(m.emissiveMap) : null;
-  if (!mean) {
-    m.emissive!.copy(target);
-    return;
-  }
-  const norm = (t: number, avg: number) => Math.min(t / Math.max(avg, 1e-3), TINT_CLAMP);
-  m.emissive!.setRGB(norm(target.r, mean.r), norm(target.g, mean.g), norm(target.b, mean.b));
+  // Fallback: no readable map. Fullbright materials show `emissive`, ordinary
+  // PBR ones (a future lulu.glb) show `color`.
+  const hex = bands[bands.length - 1].to;
+  if (m.emissive && (!m.color || m.color.getHex() === 0x000000)) m.emissive.set(hex);
+  else m.color?.set(hex);
 }
 
-/** Clip names inside roro.glb, mapped to app states. */
+/** Clip names inside roro.glb, mapped to app states. Every clip is prefixed. */
 const CLIPS = {
   idle: 'Armatureidle_necromancer',
   walk: 'Armaturerun_necromancer',
-  work: 'Armaturecast_loop_necromancer',
+  work: 'Armaturecast_end_necromancer',
   sleep: 'Armaturedeath_necromancer',
-  extras: [
-    'Armatureattack_necromancer',
-    'Armaturebuff_necromancer',
-    'Armaturejump_necromancer',
-    'Armaturegathering_necromancer',
-    'Armaturecast_end_necromancer',
-  ],
+  carry: 'Armaturefall_necromancer', // played while picked up
 };
+
+/**
+ * Clips barred from the random idle flourishes: combat stances, the loops that
+ * read as "stuck", the directional runs (they strafe with no matching motion)
+ * and the clips already bound to a state above. `_static_pose` is the rig's
+ * bind pose, not an animation — playing it freezes the character mid-scene.
+ */
+const NEVER_RANDOM = [
+  'Armatureblocking_loop_necromancer',
+  'Armatureblocking_necromancer',
+  'Armaturecast_loop_necromancer',
+  'Armaturecombat_idle_necromancer',
+  'Armatureidle_necromancer',
+  'Armaturerun_back_necromancer',
+  'Armaturerun_L_necromancer',
+  'Armaturerun_R_necromancer',
+  'Armature_static_pose',
+];
+
+/** Everything else in the pack is fair game while wandering. */
+function flourishesFrom(clips: THREE.AnimationClip[]): string[] {
+  const reserved = new Set<string>([...Object.values(CLIPS), ...NEVER_RANDOM]);
+  return clips.map((c) => c.name).filter((name) => !reserved.has(name));
+}
+
 /** Chance of performing a flourish at each wander pause. */
 const EXTRA_CHANCE = 0.45;
 
@@ -459,6 +562,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     const custom = CUSTOMIZE[role];
     const matches = (name: string, key: string) =>
       name.toLowerCase().includes(key.toLowerCase());
+    const weapons: THREE.Object3D[] = [];
     scene.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh)) return;
       obj.castShadow = true;
@@ -469,22 +573,27 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
         obj.visible = false;
         return;
       }
-      // Loose name match, then tint whichever channel is actually visible
-      // (see tintMaterial — this pack is emissive-only, not colour-driven).
-      const recolorOne = (mat: THREE.Material): THREE.Material => {
-        for (const [key, hex] of Object.entries(custom.recolor)) {
+      // Staff + its glow: stowed while asleep, so it isn't held in bed.
+      if (meshNames.some((n) => matches(n, 'weapon'))) weapons.push(obj);
+      // Loose name match, then repaint the emissive atlas (see paintMaterial —
+      // this pack is emissive-only, and one atlas covers dress + sash + trim).
+      const paintOne = (mat: THREE.Material): THREE.Material => {
+        for (const [key, bands] of Object.entries(custom.paint)) {
           if (matches(mat.name, key) || matches(obj.name, key)) {
             const clone = mat.clone();
-            tintMaterial(clone, hex);
+            paintMaterial(clone, bands);
             return clone;
           }
         }
         return mat;
       };
-      obj.material = Array.isArray(obj.material) ? mats.map(recolorOne) : recolorOne(mats[0]);
+      obj.material = Array.isArray(obj.material) ? mats.map(paintOne) : paintOne(mats[0]);
     });
-    return { scale, offset: [-center.x, -box.min.y, -center.z] as const };
+    return { scale, offset: [-center.x, -box.min.y, -center.z] as const, weapons };
   }, [scene, model.height, role]);
+
+  /** Flourish pool, derived from whatever clips this model actually ships. */
+  const flourishes = useMemo(() => flourishesFrom(animations), [animations]);
 
   /** Currently playing clip + one-shot flourish bookkeeping. */
   const currentClip = useRef<string | null>(null);
@@ -729,9 +838,8 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
           s.phase = 'settle';
           s.dwell = 0;
           // Sometimes celebrate arriving with a random flourish.
-          if (variant === 'me' && Math.random() < EXTRA_CHANCE) {
-            extraPlaying.current =
-              CLIPS.extras[Math.floor(Math.random() * CLIPS.extras.length)];
+          if (variant === 'me' && flourishes.length && Math.random() < EXTRA_CHANCE) {
+            extraPlaying.current = flourishes[Math.floor(Math.random() * flourishes.length)];
           }
         }
       } else {
@@ -752,7 +860,19 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     }
 
     /* ---------- clip selection ---------- */
-    if (walking) {
+    const carried =
+      s.dragging || (remote !== null && remote.carried && status === 'IDLE' && s.tele === 'none');
+    // Stow the staff in bed — nobody sleeps holding one.
+    const stowed = status === 'SLEEPING' && !s.dragging;
+    fitted.weapons.forEach((w) => {
+      w.visible = !stowed;
+    });
+
+    if (carried) {
+      // Picked up: go limp and hold the last frame while dangling.
+      playClip(CLIPS.carry, { once: true, fade: 0.15 });
+      extraPlaying.current = null;
+    } else if (walking) {
       playClip(CLIPS.walk);
       extraPlaying.current = null;
     } else if (status === 'WORKING' && s.tele === 'none' && !s.dragging) {
@@ -780,8 +900,6 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     }
 
     /* ---------- root transform ---------- */
-    const carried =
-      s.dragging || (remote !== null && remote.carried && status === 'IDLE' && s.tele === 'none');
     const lieE = THREE.MathUtils.smoothstep(s.lie, 0, 1);
     const carryY = carried ? CARRY_LIFT + Math.sin(t * 3) * 0.03 : 0;
     root.current.position.set(s.x, carryY + lieE * LIE_RAISE, s.z);

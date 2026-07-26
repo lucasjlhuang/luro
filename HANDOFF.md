@@ -80,11 +80,19 @@ share it via `SkeletonUtils.clone` (three-stdlib) until the user provides
 `lulu.glb` — swap in `MODELS` table.
 
 - Clip mapping (`CLIPS` const): walk→`Armaturerun_necromancer`, work→
-  `Armaturecast_loop_necromancer` (NO sit clip in pack — works STANDING at desk,
+  `Armaturecast_end_necromancer` (NO sit clip in pack — works STANDING at desk,
   anchor [chairX, −1.5]), sleep→`Armaturedeath_necromancer` once + clampWhenFinished
   (ends lying = bed pose; root raised to LIE_RAISE 0.88, yaw π/2 nets correct with
-  model yaw π), idle→`Armatureidle_necromancer`, plus random one-shot flourishes
-  (EXTRA_CHANCE 0.45 at wander pauses; mixer 'finished' returns to idle).
+  model yaw π), carry→`Armaturefall_necromancer` once + clamp (limp dangle while
+  picked up), idle→`Armatureidle_necromancer`.
+- Random flourishes are DERIVED, not listed: `flourishesFrom(animations)` = every
+  clip in the GLB minus `NEVER_RANDOM` (user's exclusion list: blocking_loop,
+  blocking, cast_loop, combat_idle, idle, run_back, run_L, run_R — plus
+  `Armature_static_pose`, the bind pose, which would freeze the rig) minus the
+  four state clips above. Currently leaves attack, buff, gathering, get_hit,
+  jump, run_attack. EXTRA_CHANCE 0.45 at wander pauses; mixer 'finished' → idle.
+- Staff (`weapon_*` meshes, collected into `fitted.weapons`) is hidden while
+  SLEEPING and restored on pick-up.
 - Model yaw = π (source faces −z).
 - Kept intact: smoke-puff teleports between statuses, drag (head-under-cursor via
   grab plane at CARRY_LIFT+HEAD_TOP), drop-zone emojis (bed 😴 rect BED_RECT,
@@ -93,26 +101,43 @@ share it via `SkeletonUtils.clone` (three-stdlib) until the user provides
   width, shrinks to centred caret on focus, grows per char to 25ch/160px, Enter
   sends, 13px ✕ with SVG cross; view: 5s hold + 0.5s fade; anchors follow head,
   incl. lying offset −0.5x/+0.3y), Zzz, CHAR_POS sync, Wii cursors.
-- `CUSTOMIZE` table: hood hidden (`outfit_hat`; real hair mesh underneath),
-  recolors by loose material/mesh name match, material CLONED per instance.
-  Roro: hair #a8815a, robes `outfit_body` #cfe8b5, boots `outfit_boots` #f28bb4.
-  Lulu stand-in: hair #3b2a1d only.
-- **Hair-colour saga — root cause found (awaiting visual confirm):** the pack is
-  FULLBRIGHT. Every material has `baseColorFactor` pure black, `specularFactor` 0,
-  and all colour in an **emissive map** with `emissiveFactor` white — so what you
-  see is `emissive * emissiveMap` and tinting `.color` is a no-op (black × black).
-  That, not a material subclass, is why two rounds of `.color` fixes did nothing.
-  `tintMaterial()` now detects fullbright materials (emissive + black color) and
-  tints `emissive` instead. It also NORMALISES: the hair map is pale blue-white
-  (linear mean 0.30/0.43/0.76), so a flat multiply would render brown as
-  blue-black — the target hex is divided by the map's per-channel mean
-  (`textureMean`, 64×64 canvas downsample, WeakMap-cached, skips the transparent/
-  black UV gutter), so the average texel lands ON the requested colour while the
-  baked shading gradient survives. Non-fullbright materials still take the
-  `.color` path, so a future `lulu.glb` with ordinary PBR just works.
-  Side effect to watch: `outfit_body` (#cfe8b5) and `outfit_boots` (#f28bb4) were
-  silently no-ops before and now actually change — if the user liked the original
-  robes, drop those two keys from `CUSTOMIZE.USER_B`, don't revert the commit.
+- `CUSTOMIZE` table: hood hidden (`outfit_hat`; real hair mesh underneath), then
+  per-material `paint` BANDS, matched by loose material/mesh name; material
+  CLONED per instance. Roro: hair #893718, dress `outfit_body` #80EF80 with
+  sash/hem trim #FF46A2, eyes `skin_eyes` #50C878. Lulu stand-in: hair #3b2a1d.
+  `outfit_boots` is no longer painted (the old pink there was a guess).
+### Recolouring: how it actually works
+
+The pack is **FULLBRIGHT**. Every material has `baseColorFactor` pure black,
+`specularFactor` 0, and all colour in an **emissive map** with `emissiveFactor`
+white — what you see is `emissive * emissiveMap`, so tinting `.color` is a no-op
+(black × black). That, not a material subclass, is why two rounds of `.color`
+fixes did nothing about the white hair.
+
+Tinting `.emissive` works but can only recolour a whole map at once, and the
+dress + sash + hem trim all share ONE material and ONE atlas. So recolouring is
+done at the **pixel** level by `repaintTexture()`:
+
+- Each texel is classified into a `Band` by hue/saturation (`isTrimGold`,
+  `isTrimBlue`; a band with no `match` is the catch-all). Transparent and
+  near-black texels (the unused UV gutter) are skipped.
+- The band is re-hued to the target, carrying lightness across as an OFFSET from
+  the band's own mean (`newL = targetL + (pixelL − meanL)`), not a multiply.
+  That preserves the baked shading at original contrast and can't blow out — the
+  robe's mean sits at L 0.20 against a target of 0.72, where a multiply clips
+  every highlight to white.
+- Result is a `CanvasTexture` with `flipY`/wrap/`colorSpace`/`channel` copied
+  from the source (GLTF textures are NOT flipped), cached per (texture, bands).
+- `paintMaterial()` falls back to a flat `emissive`/`color` tint if the map can't
+  be read, so a future `lulu.glb` with ordinary PBR materials needs no changes.
+
+To retune, move the two predicates — they are the pink/green boundary. Note the
+dress band is the catch-all, so anything not caught as trim goes green.
+
+**Verify recolours headlessly before shipping** — a hue-wrap bug rendered the
+pink sash BLUE and the build could not have caught it. Extract the atlas, port
+the band maths to a throwaway node script, write a BMP and LOOK at it. (`sips`
+drops the alpha channel on webp→png, so read alpha from the original webp.)
 - Known cosmetic gap: working = standing (no sit clip); user accepted for now.
   Chair choice on drop isn't synced (partner sees your status at their default
   chair anchor) — cosmetic.
