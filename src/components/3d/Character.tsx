@@ -7,6 +7,7 @@ import { CharacterStatus, CharPos, Role, partnerOf, useAppStore } from '../../st
 import { setForceInteractive } from '../../lib/hitTest';
 import { CURSOR, lockCursor, setCursor, unlockCursor } from '../../lib/cursors';
 import roroUrl from '../../assets/models/roro.glb?url';
+import luluUrl from '../../assets/models/lulu.glb?url';
 
 /* ------------------------------------------------------------------ */
 /* GLB characters driven by their own animation clips.                */
@@ -22,32 +23,115 @@ import roroUrl from '../../assets/models/roro.glb?url';
 /*   click + drag -> pick up and carry (drop on bed/chairs to pose)   */
 /* ------------------------------------------------------------------ */
 
-const MODELS: Record<Role, { url: string; height: number; yaw: number }> = {
-  // TODO: swap to lulu.glb when provided — Roro is standing in for both.
-  // The source model faces -z, so add a half turn.
-  USER_A: { url: roroUrl, height: 1.1, yaw: Math.PI },
-  USER_B: { url: roroUrl, height: 1.1, yaw: Math.PI },
+/**
+ * Clip names differ per model — Lulu is the "mage" pack, Roro the
+ * "necromancer" one — so each model carries its own table.
+ *
+ * `neverRandom` is the user's exclusion list for the idle flourishes. The four
+ * state clips below are barred automatically, so they need not be repeated.
+ */
+interface ModelSpec {
+  url: string;
+  height: number;
+  yaw: number;
+  clips: { idle: string; walk: string; work: string; sleep: string; carry: string };
+  neverRandom: string[];
+}
+
+const MODELS: Record<Role, ModelSpec> = {
+  // Lulu — mage pack. Walk uses run_mage (walk.mage is on the exclusion list).
+  USER_A: {
+    url: luluUrl,
+    height: 1.1,
+    yaw: Math.PI, // the source model faces -z, so add a half turn
+    clips: {
+      idle: 'Armatureidle_mage',
+      walk: 'Armaturerun_mage',
+      work: 'Armatureskill_attack_mage',
+      sleep: 'Armaturedeath_mage',
+      carry: 'Armaturefalling_mage',
+    },
+    neverRandom: [
+      'Armaturecasting_loop_mage',
+      'Armaturecombat_idle_mage',
+      'Armatureidle_mage',
+      'Armaturerun_L_mage',
+      'Armaturerun_R_mage',
+      'Armaturewalk.mage',
+      'Armature__static_pose', // bind pose, not an animation (note: two underscores)
+    ],
+  },
+  // Roro — necromancer pack.
+  USER_B: {
+    url: roroUrl,
+    height: 1.1,
+    yaw: Math.PI,
+    clips: {
+      idle: 'Armatureidle_necromancer',
+      walk: 'Armaturerun_necromancer',
+      work: 'Armaturecast_end_necromancer',
+      sleep: 'Armaturedeath_necromancer',
+      carry: 'Armaturefall_necromancer',
+    },
+    neverRandom: [
+      'Armatureblocking_loop_necromancer',
+      'Armatureblocking_necromancer',
+      'Armaturecast_loop_necromancer',
+      'Armaturecombat_idle_necromancer',
+      'Armatureidle_necromancer',
+      'Armaturerun_back_necromancer',
+      'Armaturerun_L_necromancer',
+      'Armaturerun_R_necromancer',
+      'Armature_static_pose',
+    ],
+  },
 };
 
 useGLTF.preload(roroUrl);
+useGLTF.preload(luluUrl);
 
 /**
  * A band of a texture to repaint, selected by the source pixel's hue and
  * saturation. Bands are tried in order; one with no `match` is the catch-all
  * for everything the earlier bands left over.
  */
-type Band = { match?: (hue: number, sat: number) => boolean; to: string };
+type Band = {
+  match?: (hue: number, sat: number) => boolean;
+  /**
+   * Restrict the band to texels used by triangles sitting within this slice of
+   * the mesh's own height (0 = its lowest vertex, 1 = its highest). Needed when
+   * two parts share both a material AND a colour and can only be told apart by
+   * where they sit on the body — see SASH_BAND.
+   */
+  bodyBand?: [number, number];
+  /**
+   * Index of another band to disappear into. The band takes that band's colour,
+   * mean lightness AND contrast, so it stops reading as a separate part.
+   * Matching only the colour is not enough — a bright trim keeps far more
+   * internal contrast than the cloth around it and still shows as a band.
+   * When set, `to` is ignored.
+   */
+  mergeInto?: number;
+  to: string;
+};
 
-/* The dress, its sash and its hem trim all share ONE material and ONE atlas,
- * and the sash is not separable geometry — it can only be told apart by colour:
- * the cloth is desaturated purple, the sash/trim are the saturated blue and
- * gold runs. Both bands are painted the SAME pink, but they stay separate bands
- * on purpose: each is normalised to its own mean lightness, which collapses the
- * sash's contrast against the dress so it stops reading as a band at all. One
- * shared band instead would leave the sash blown out several stops brighter. */
+/* The dress, skirt and trims all share ONE material and ONE atlas, so they can
+ * only be told apart by colour: the cloth is desaturated purple, the trims are
+ * the saturated blue and gold runs. These two predicates ARE the dress/trim
+ * boundary — widen or narrow them to move it. */
 const isTrimGold = (h: number, s: number) => h >= 20 && h <= 70 && s >= 0.2;
 const isTrimBlue = (h: number, s: number) => h >= 185 && h <= 248 && s >= 0.35;
-const CLOTH_PINK = '#FF46A2';
+const isTrim = (h: number, s: number) => isTrimGold(h, s) || isTrimBlue(h, s);
+
+/* The sash is the trim-coloured belt at the waist; the rest of the trim is the
+ * hem around the bottom of the skirt. They are the same colour in the atlas and
+ * their UV islands are scattered, so height is the only thing that separates
+ * them. Measured from the bind pose: the belt sits at 50-72% of the mesh's
+ * height, the hem below 40%. The sash cannot be DELETED — it is not separate
+ * geometry, just a band of the dress surface, and dropping those triangles
+ * would punch a hole through the dress — so it is "removed" by painting it the
+ * dress colour. */
+const SASH_BAND: [number, number] = [0.5, 0.72];
 
 /**
  * Per-role model surgery, keyed by material name: hide parts (the hood has
@@ -55,17 +139,26 @@ const CLOTH_PINK = '#FF46A2';
  * so the two roles can differ despite sharing one GLB.
  */
 const CUSTOMIZE: Record<Role, { hide: string[]; paint: Record<string, Band[]> }> = {
-  // Lulu is standing in with Roro's model — hair only, no outfit changes.
-  USER_A: { hide: ['outfit_hat'], paint: { skin_hair: [{ to: '#3b2a1d' }] } },
+  // 'weapon' hides the staff outright. Drop it from `hide` to bring the staff
+  // back; the sleeping/stow logic in the frame loop then applies again.
+  USER_A: {
+    hide: ['outfit_hat', 'weapon', 'outfit_cloak'], // no hat, no staff, no cape
+    paint: {
+      skin_hair: [{ to: '#1A120B' }], // dark brown, near black
+      skin_eyes: [{ match: (_h, s) => s >= 0.25, to: '#A8763E' }], // hazel brown
+    },
+  },
   USER_B: {
-    hide: ['outfit_hat'],
+    hide: ['outfit_hat', 'weapon'],
     paint: {
       skin_hair: [{ to: '#893718' }], // light brown
       outfit_body: [
-        { match: (h, s) => isTrimGold(h, s) || isTrimBlue(h, s), to: CLOTH_PINK }, // sash + hem trim
-        { to: CLOTH_PINK }, // the dress itself
+        // the sash: dissolved into the dress (band 2) so it vanishes
+        { match: isTrim, bodyBand: SASH_BAND, mergeInto: 2, to: '#00A86B' },
+        { match: isTrim, to: '#98FB98' }, // remaining trims (the hem)
+        { to: '#00A86B' }, // dress + skirt
       ],
-      outfit_boots: [{ to: CLOTH_PINK }],
+      outfit_boots: [{ to: '#000000' }], // shoes
       // leave the white catchlights alone, recolour only the glowing iris
       skin_eyes: [{ match: (_h, s) => s >= 0.25, to: '#50C878' }], // emerald
     },
@@ -119,10 +212,78 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   return [comp(h + 1 / 3) * 255, comp(h) * 255, comp(h - 1 / 3) * 255];
 }
 
+/**
+ * Texels covered by triangles whose centre sits within [lo,hi] of the mesh's
+ * own height, in bind pose. Rasterised straight into UV space at the texture's
+ * resolution; edges are grown by a texel so seams don't leak the old colour.
+ */
+function buildBodyBandMask(
+  geom: THREE.BufferGeometry,
+  w: number,
+  h: number,
+  lo: number,
+  hi: number
+): Uint8Array | null {
+  const pos = geom.getAttribute('position');
+  const uv = geom.getAttribute('uv');
+  if (!pos || !uv) return null;
+  const index = geom.getIndex();
+  const triCount = (index ? index.count : pos.count) / 3;
+
+  let yMin = Infinity;
+  let yMax = -Infinity;
+  for (let i = 0; i < pos.count; i += 1) {
+    const y = pos.getY(i);
+    if (y < yMin) yMin = y;
+    if (y > yMax) yMax = y;
+  }
+  const span = yMax - yMin;
+  if (!(span > 0)) return null;
+
+  const mask = new Uint8Array(w * h);
+  const ux = [0, 0, 0];
+  const uy = [0, 0, 0];
+  for (let t = 0; t < triCount; t += 1) {
+    let cy = 0;
+    for (let c = 0; c < 3; c += 1) {
+      const vi = index ? index.getX(t * 3 + c) : t * 3 + c;
+      cy += pos.getY(vi);
+      ux[c] = uv.getX(vi) * (w - 1);
+      uy[c] = uv.getY(vi) * (h - 1);
+    }
+    const frac = (cy / 3 - yMin) / span;
+    if (frac < lo || frac > hi) continue;
+
+    // grow the triangle's box by one texel to cover the UV seam
+    const x0 = Math.max(0, Math.floor(Math.min(ux[0], ux[1], ux[2])) - 1);
+    const x1 = Math.min(w - 1, Math.ceil(Math.max(ux[0], ux[1], ux[2])) + 1);
+    const y0 = Math.max(0, Math.floor(Math.min(uy[0], uy[1], uy[2])) - 1);
+    const y1 = Math.min(h - 1, Math.ceil(Math.max(uy[0], uy[1], uy[2])) + 1);
+    const area = (ux[1] - ux[0]) * (uy[2] - uy[0]) - (ux[2] - ux[0]) * (uy[1] - uy[0]);
+    if (!area) continue;
+    for (let y = y0; y <= y1; y += 1) {
+      for (let x = x0; x <= x1; x += 1) {
+        const w0 = ((ux[1] - x) * (uy[2] - y) - (ux[2] - x) * (uy[1] - y)) / area;
+        const w1 = ((ux[2] - x) * (uy[0] - y) - (ux[0] - x) * (uy[2] - y)) / area;
+        const w2 = 1 - w0 - w1;
+        if (w0 < -0.02 || w1 < -0.02 || w2 < -0.02) continue;
+        mask[y * w + x] = 1;
+      }
+    }
+  }
+  return mask;
+}
+
 /** Source texture -> a recoloured copy. Cached per (texture, band set). */
-function repaintTexture(tex: THREE.Texture, bands: Band[]): THREE.Texture | null {
-  // Two bands can now share a colour, so the key notes which ones are matched.
-  const key = bands.map((b) => (b.match ? 'm' : '*') + b.to).join('|');
+function repaintTexture(
+  tex: THREE.Texture,
+  bands: Band[],
+  geom?: THREE.BufferGeometry
+): THREE.Texture | null {
+  // Bands can share a colour, so the key notes matchers and height slices too.
+  const key = bands
+    .map((b) => (b.match ? 'm' : '*') + (b.bodyBand?.join(':') ?? '') + b.to)
+    .join('|');
   let perTex = repaintCache.get(tex);
   if (perTex?.has(key)) return perTex.get(key) ?? null;
 
@@ -141,22 +302,36 @@ function repaintTexture(tex: THREE.Texture, bands: Band[]): THREE.Texture | null
         const image = ctx.getImageData(0, 0, w, h);
         const { data } = image;
 
-        // pass 1: which band each texel belongs to, and each band's mean L
+        const masks = bands.map((b) =>
+          b.bodyBand && geom ? buildBodyBandMask(geom, w, h, b.bodyBand[0], b.bodyBand[1]) : null
+        );
+        const bandAt = (p: number, hue: number, sat: number) =>
+          bands.findIndex(
+            (band, bi) =>
+              (!band.match || band.match(hue, sat)) && (!masks[bi] || masks[bi]![p] === 1)
+          );
+
+        // pass 1: which band each texel belongs to, and each band's L stats
         const bandOf = new Int8Array(w * h).fill(-1);
         const sumL = new Float64Array(bands.length);
+        const sumSq = new Float64Array(bands.length);
         const count = new Float64Array(bands.length);
+        const minL = new Float64Array(bands.length).fill(1);
+        const maxL = new Float64Array(bands.length).fill(0);
         for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
           // skip the unused UV gutter: transparent or near-black
           if (data[i + 3] < 8 || data[i] + data[i + 1] + data[i + 2] < 12) continue;
           const [hue, sat, lum] = rgbToHsl(data[i], data[i + 1], data[i + 2]);
-          const b = bands.findIndex((band) => !band.match || band.match(hue, sat));
+          const b = bandAt(p, hue, sat);
           if (b < 0) continue;
           bandOf[p] = b;
           sumL[b] += lum;
+          sumSq[b] += lum * lum;
           count[b] += 1;
+          minL[b] = Math.min(minL[b], lum);
+          maxL[b] = Math.max(maxL[b], lum);
         }
 
-        // pass 2: re-hue, shifting lightness by the band's own offset.
         // Parse the hex straight to sRGB bytes — the texels are in that same
         // space, and going via THREE.Color would depend on whether colour
         // management happens to be enabled.
@@ -164,13 +339,48 @@ function repaintTexture(tex: THREE.Texture, bands: Band[]): THREE.Texture | null
           const n = parseInt(b.to.slice(1), 16);
           return rgbToHsl((n >> 16) & 255, (n >> 8) & 255, n & 255);
         });
+
+        /* Shading is carried across as an offset from the band's mean. Where
+         * that offset would run past black or white, squeeze it to fit instead
+         * of clamping: clamping flattens the whole overshoot to one value, so a
+         * bright trim region turns into a white blob and near-black shoes lose
+         * their form entirely. Squeezing keeps the gradient, just shallower. */
+        const fit = bands.map((_, b) => {
+          if (!count[b]) return { up: 1, down: 1 };
+          const mean = sumL[b] / count[b];
+          const tL = target[b][2];
+          return {
+            up: maxL[b] > mean ? Math.min(1, (1 - tL) / (maxL[b] - mean)) : 1,
+            down: mean > minL[b] ? Math.min(1, tL / (mean - minL[b])) : 1,
+          };
+        });
+
+        const stdev = bands.map((_, b) =>
+          count[b] ? Math.sqrt(Math.max(0, sumSq[b] / count[b] - (sumL[b] / count[b]) ** 2)) : 0
+        );
+
+        // pass 2: re-hue at the fitted lightness
         for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
           const b = bandOf[p];
           if (b < 0) continue;
           const [, , lum] = rgbToHsl(data[i], data[i + 1], data[i + 2]);
           const mean = count[b] ? sumL[b] / count[b] : lum;
-          const [tH, tS, tL] = target[b];
-          const [nr, ng, nb] = hslToRgb(tH, tS, THREE.MathUtils.clamp(tL + (lum - mean), 0, 1));
+          const d = lum - mean;
+
+          const into = bands[b].mergeInto;
+          let tH: number;
+          let tS: number;
+          let newL: number;
+          if (into !== undefined && count[into] && stdev[b] > 1e-4) {
+            // adopt the host band's colour, level and contrast
+            [tH, tS] = target[into];
+            const hostFit = (fit[into].up + fit[into].down) / 2;
+            newL = target[into][2] + d * (stdev[into] / stdev[b]) * hostFit;
+          } else {
+            [tH, tS] = target[b];
+            newL = target[b][2] + d * (d > 0 ? fit[b].up : fit[b].down);
+          }
+          const [nr, ng, nb] = hslToRgb(tH, tS, THREE.MathUtils.clamp(newL, 0, 1));
           data[i] = nr;
           data[i + 1] = ng;
           data[i + 2] = nb;
@@ -201,13 +411,13 @@ function repaintTexture(tex: THREE.Texture, bands: Band[]): THREE.Texture | null
 }
 
 /** Repaint a material's emissive map, or flat-tint it if the map is unreadable. */
-function paintMaterial(mat: THREE.Material, bands: Band[]): void {
+function paintMaterial(mat: THREE.Material, bands: Band[], geom?: THREE.BufferGeometry): void {
   const m = mat as THREE.Material & {
     color?: THREE.Color;
     emissive?: THREE.Color;
     emissiveMap?: THREE.Texture | null;
   };
-  const repainted = m.emissiveMap ? repaintTexture(m.emissiveMap, bands) : null;
+  const repainted = m.emissiveMap ? repaintTexture(m.emissiveMap, bands, geom) : null;
   if (repainted) {
     m.emissiveMap = repainted;
     return;
@@ -219,36 +429,12 @@ function paintMaterial(mat: THREE.Material, bands: Band[]): void {
   else m.color?.set(hex);
 }
 
-/** Clip names inside roro.glb, mapped to app states. Every clip is prefixed. */
-const CLIPS = {
-  idle: 'Armatureidle_necromancer',
-  walk: 'Armaturerun_necromancer',
-  work: 'Armaturecast_end_necromancer',
-  sleep: 'Armaturedeath_necromancer',
-  carry: 'Armaturefall_necromancer', // played while picked up
-};
-
 /**
- * Clips barred from the random idle flourishes: combat stances, the loops that
- * read as "stuck", the directional runs (they strafe with no matching motion)
- * and the clips already bound to a state above. `_static_pose` is the rig's
- * bind pose, not an animation — playing it freezes the character mid-scene.
+ * Everything in the model's pack is fair game for the idle flourishes except
+ * its own `neverRandom` exclusions and the clips already bound to a state.
  */
-const NEVER_RANDOM = [
-  'Armatureblocking_loop_necromancer',
-  'Armatureblocking_necromancer',
-  'Armaturecast_loop_necromancer',
-  'Armaturecombat_idle_necromancer',
-  'Armatureidle_necromancer',
-  'Armaturerun_back_necromancer',
-  'Armaturerun_L_necromancer',
-  'Armaturerun_R_necromancer',
-  'Armature_static_pose',
-];
-
-/** Everything else in the pack is fair game while wandering. */
-function flourishesFrom(clips: THREE.AnimationClip[]): string[] {
-  const reserved = new Set<string>([...Object.values(CLIPS), ...NEVER_RANDOM]);
+function flourishesFrom(clips: THREE.AnimationClip[], model: ModelSpec): string[] {
+  const reserved = new Set<string>([...Object.values(model.clips), ...model.neverRandom]);
   return clips.map((c) => c.name).filter((name) => !reserved.has(name));
 }
 
@@ -587,7 +773,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
         for (const [key, bands] of Object.entries(custom.paint)) {
           if (matches(mat.name, key) || matches(obj.name, key)) {
             const clone = mat.clone();
-            paintMaterial(clone, bands);
+            paintMaterial(clone, bands, obj.geometry);
             return clone;
           }
         }
@@ -599,7 +785,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
   }, [scene, model.height, role]);
 
   /** Flourish pool, derived from whatever clips this model actually ships. */
-  const flourishes = useMemo(() => flourishesFrom(animations), [animations]);
+  const flourishes = useMemo(() => flourishesFrom(animations, model), [animations, model]);
 
   /** Currently playing clip + one-shot flourish bookkeeping. */
   const currentClip = useRef<string | null>(null);
@@ -876,19 +1062,19 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
 
     if (carried) {
       // Picked up: go limp and hold the last frame while dangling.
-      playClip(CLIPS.carry, { once: true, fade: 0.15 });
+      playClip(model.clips.carry, { once: true, fade: 0.15 });
       extraPlaying.current = null;
     } else if (walking) {
-      playClip(CLIPS.walk);
+      playClip(model.clips.walk);
       extraPlaying.current = null;
     } else if (status === 'WORKING' && s.tele === 'none' && !s.dragging) {
-      playClip(CLIPS.work);
+      playClip(model.clips.work);
     } else if (status === 'SLEEPING' && s.tele === 'none' && !s.dragging) {
-      playClip(CLIPS.sleep, { once: true, fade: 0.2 });
+      playClip(model.clips.sleep, { once: true, fade: 0.2 });
     } else if (extraPlaying.current) {
       playClip(extraPlaying.current, { once: true, fade: 0.15 });
     } else {
-      playClip(CLIPS.idle);
+      playClip(model.clips.idle);
     }
 
     /* ---------- broadcast my position while wandering / carried ---------- */

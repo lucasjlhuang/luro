@@ -72,81 +72,99 @@ back; expect blind-tuning loops ("move it 25px left").
   only; Settings = REMOVED (pencil cup popover instead); Speech = REMOVED (in-scene
   bubble editor).
 
-## Characters (current state + in-flight work)
+## Characters (current state)
 
-Just replaced procedural villagers with **`src/assets/models/roro.glb`** (10MB,
-user-supplied, 47-joint rig, 19 clips, low-poly "necromancer" pack). Both roles
-share it via `SkeletonUtils.clone` (three-stdlib) until the user provides
-`lulu.glb` — swap in `MODELS` table.
+Two REAL models now, both from the same low-poly pack family (same material
+names, same fullbright setup): `src/assets/models/lulu.glb` (mage, 7MB) for
+USER_A and `roro.glb` (necromancer, 10MB) for USER_B. Clip names differ per
+pack, so `MODELS[role]` carries its own `clips` + `neverRandom` table — there is
+no longer a global CLIPS const.
 
-- Clip mapping (`CLIPS` const): walk→`Armaturerun_necromancer`, work→
-  `Armaturecast_end_necromancer` (NO sit clip in pack — works STANDING at desk,
-  anchor [chairX, −1.5]), sleep→`Armaturedeath_necromancer` once + clampWhenFinished
-  (ends lying = bed pose; root raised to LIE_RAISE 0.88, yaw π/2 nets correct with
-  model yaw π), carry→`Armaturefall_necromancer` once + clamp (limp dangle while
-  picked up), idle→`Armatureidle_necromancer`.
-- Random flourishes are DERIVED, not listed: `flourishesFrom(animations)` = every
-  clip in the GLB minus `NEVER_RANDOM` (user's exclusion list: blocking_loop,
-  blocking, cast_loop, combat_idle, idle, run_back, run_L, run_R — plus
-  `Armature_static_pose`, the bind pose, which would freeze the rig) minus the
-  four state clips above. Currently leaves attack, buff, gathering, get_hit,
-  jump, run_attack. EXTRA_CHANCE 0.45 at wander pauses; mixer 'finished' → idle.
-- Staff (`weapon_*` meshes, collected into `fitted.weapons`) is hidden while
-  SLEEPING and restored on pick-up.
-- Model yaw = π (source faces −z).
-- Kept intact: smoke-puff teleports between statuses, drag (head-under-cursor via
-  grab plane at CARRY_LIFT+HEAD_TOP), drop-zone emojis (bed 😴 rect BED_RECT,
-  chairs 💻 CHAIR_XS/CHAIR_Z; drop elsewhere = roam; drag cancels speech editor +
-  forces IDLE), speech bubbles (editor: white pill, hint "Say something…" measured
-  width, shrinks to centred caret on focus, grows per char to 25ch/160px, Enter
-  sends, 13px ✕ with SVG cross; view: 5s hold + 0.5s fade; anchors follow head,
-  incl. lying offset −0.5x/+0.3y), Zzz, CHAR_POS sync, Wii cursors.
-- `CUSTOMIZE` table: hood hidden (`outfit_hat`; real hair mesh underneath), then
-  per-material `paint` BANDS, matched by loose material/mesh name; material
-  CLONED per instance. Roro: hair #893718, eyes `skin_eyes` #50C878, and ALL
-  clothing (`outfit_body` + `outfit_boots`) one pink `CLOTH_PINK` #FF46A2.
-  Lulu stand-in: hair #3b2a1d.
-- The sash could not be deleted — it is not separate geometry, just a region of
-  the `outfit_body` mesh and atlas. It is "removed" by painting its band the
-  same pink as the dress. Keep it as its OWN band even though the colour
-  matches: per-band mean normalisation is what collapses its contrast. Merging
-  into one catch-all band blows 10k texels out to white (measured); two bands
-  clip 15.
+- State clips per model:
+  - Lulu: idle `idle_mage`, walk `run_mage`, work `skill_attack_mage`, sleep
+    `death_mage`, carry `falling_mage`.
+  - Roro: idle `idle_necromancer`, walk `run_necromancer`, work
+    `cast_end_necromancer`, sleep `death_necromancer`, carry
+    `fall_necromancer`.
+  - All names carry the `Armature` prefix. sleep + carry play once with
+    clampWhenFinished; sleep ends lying = bed pose (root raised to LIE_RAISE
+    0.88, yaw pi/2 nets correct with model yaw pi).
+  - NOTE: the user's Lulu exclusion list named `walk.mage`, so walk is driven by
+    `run_mage` (matching Roro). Swap if they meant the reverse.
+- `flourishesFrom(animations, model)` = every clip in that GLB minus its
+  `neverRandom` minus the five state clips. Static/bind poses are excluded by
+  name and differ per pack: `Armature_static_pose` (roro) vs
+  `Armature__static_pose` (lulu, TWO underscores). EXTRA_CHANCE 0.45 at wander
+  pauses; mixer 'finished' returns to idle.
+  - Roro pool: attack, buff, gathering, get_hit, jump, run_attack.
+  - Lulu pool: attack, blocking_loop, buff, gathering, get_hit, jump,
+    run_attack, run_back. (blocking_loop was excluded for Roro but NOT listed
+    for Lulu — user's list, left as given.)
+- Hidden per role via `CUSTOMIZE.hide` (loose substring match on mesh AND
+  material names): both hide `outfit_hat` and `weapon`; Lulu also hides
+  `outfit_cloak` (the cape).
+- The staff-stow-while-sleeping logic (`fitted.weapons`, hidden when SLEEPING
+  and not being dragged) still exists but is INERT while 'weapon' is in `hide`.
+  Drop 'weapon' from `hide` to bring the staff back and it applies again.
+- Kept intact: smoke-puff teleports between statuses, drag (head-under-cursor
+  via grab plane at CARRY_LIFT+HEAD_TOP), drop-zone emojis (bed emoji rect
+  BED_RECT, chairs CHAIR_XS/CHAIR_Z; drop elsewhere = roam; drag cancels speech
+  editor + forces IDLE), speech bubbles (editor: white pill, hint "Say
+  something..." measured width, shrinks to centred caret on focus, grows per
+  char to 25ch/160px, Enter sends, 13px close with SVG cross; view: 5s hold +
+  0.5s fade; anchors follow head, incl. lying offset -0.5x/+0.3y), Zzz,
+  CHAR_POS sync, Wii cursors.
+- Known cosmetic gaps: working = standing (no sit clip in either pack); chair
+  choice on drop isn't synced (partner sees your status at their default chair
+  anchor).
+- Model yaw = pi for both (sources face -z). If Lulu ends up facing backwards,
+  that is the dial.
+
 ### Recolouring: how it actually works
 
-The pack is **FULLBRIGHT**. Every material has `baseColorFactor` pure black,
+Both packs are **FULLBRIGHT**. Every material has `baseColorFactor` pure black,
 `specularFactor` 0, and all colour in an **emissive map** with `emissiveFactor`
 white — what you see is `emissive * emissiveMap`, so tinting `.color` is a no-op
-(black × black). That, not a material subclass, is why two rounds of `.color`
+(black x black). That, not a material subclass, is why two rounds of `.color`
 fixes did nothing about the white hair.
 
-Tinting `.emissive` works but can only recolour a whole map at once, and the
-dress + sash + hem trim all share ONE material and ONE atlas. So recolouring is
-done at the **pixel** level by `repaintTexture()`:
+Tinting `.emissive` works but recolours a whole map at once, and the dress, sash
+and trims all share ONE material and ONE atlas. So recolouring happens at the
+**pixel** level in `repaintTexture()`:
 
 - Each texel is classified into a `Band` by hue/saturation (`isTrimGold`,
   `isTrimBlue`; a band with no `match` is the catch-all). Transparent and
   near-black texels (the unused UV gutter) are skipped.
 - The band is re-hued to the target, carrying lightness across as an OFFSET from
-  the band's own mean (`newL = targetL + (pixelL − meanL)`), not a multiply.
-  That preserves the baked shading at original contrast and can't blow out — the
-  robe's mean sits at L 0.20 against a target of 0.72, where a multiply clips
-  every highlight to white.
+  the band's own mean (`newL = targetL + (pixelL - meanL)`), not a multiply — a
+  multiply clips every highlight when a dark region takes a light target.
+- Where the offset would still run past black or white it is SQUEEZED to fit
+  (`fit[b].up/.down`, from the band's min/max L) rather than clamped. Clamping
+  flattens the overshoot to one value: pale trims became a white blob and black
+  shoes lost their form entirely. Current table clamps zero texels on every map.
 - Result is a `CanvasTexture` with `flipY`/wrap/`colorSpace`/`channel` copied
   from the source (GLTF textures are NOT flipped), cached per (texture, bands).
-- `paintMaterial()` falls back to a flat `emissive`/`color` tint if the map can't
-  be read, so a future `lulu.glb` with ordinary PBR materials needs no changes.
+- `paintMaterial()` falls back to a flat `emissive`/`color` tint if the map
+  can't be read, which also covers any future model with ordinary PBR materials.
 
-To retune, move the two predicates — they are the pink/green boundary. Note the
-dress band is the catch-all, so anything not caught as trim goes green.
+Two extra mechanisms exist for parts that share a material AND a colour:
+
+- `bodyBand: [lo, hi]` restricts a band to texels used by triangles sitting in
+  that slice of the mesh's own height. `buildBodyBandMask()` rasterises those
+  triangles into UV space at load (grown a texel for seams). Needed because the
+  sash and hem are the same colour and their UV islands are scattered across the
+  atlas — no UV rectangle separates them.
+- `mergeInto: <band index>` makes a band adopt another band's colour, mean
+  lightness AND contrast. Colour alone is not enough: the sash carries far more
+  internal contrast (std 0.095) than the dress cloth (0.060) and still read as a
+  band when only its mean was matched.
 
 **Verify recolours headlessly before shipping** — a hue-wrap bug rendered the
 pink sash BLUE and the build could not have caught it. Extract the atlas, port
-the band maths to a throwaway node script, write a BMP and LOOK at it. (`sips`
-drops the alpha channel on webp→png, so read alpha from the original webp.)
-- Known cosmetic gap: working = standing (no sit clip); user accepted for now.
-  Chair choice on drop isn't synced (partner sees your status at their default
-  chair anchor) — cosmetic.
+the band maths to a throwaway node script, write a BMP and LOOK at it. Going
+further and software-rasterising the mesh (project positions, sample the painted
+atlas per triangle) is what identified the sash vs the hem in the first place.
+(`sips` drops alpha on webp->png, so read alpha from the original webp.)
 
 ## Hard-won GLB/3D gotchas (do not relearn these)
 
@@ -177,7 +195,8 @@ drops the alpha channel on webp→png, so read alpha from the original webp.)
 
 ## Assets & licenses (README has full credits)
 
-- `roro.glb` — user-supplied character (license unknown; personal use).
+- `roro.glb` / `lulu.glb` — user-supplied characters (license unknown; personal
+  use). Sources kept at `~/Desktop/models/characters/`.
 - `djungelskog.glb` — bear on bed, CC-BY-NC (Arkify 3D), matte, brightness 2,
   rotY = 0.85 + 165°·π/180, pos [-0.45, 0.84, -0.46] inside Bed group.
 - Wii cursors (user-supplied PNGs), Instrument Sans via @fontsource.
@@ -186,9 +205,9 @@ drops the alpha channel on webp→png, so read alpha from the original webp.)
 
 ## Likely next asks
 
-- Confirm/fix hair color (texture-repaint fallback above).
-- `lulu.glb` arrival → MODELS + CUSTOMIZE entries.
-- Sit animation someday (needs a pack with a sit clip, or manual hip/knee posing
-  layered over idle).
-- Foot-slide tuning: match WALK_SPEED (1.05) to run-clip stride via timeScale.
-- Pink accents ON the robe itself = texture edit, not material tint.
+- Colour/removal tweaks on either character — the dials are the `CUSTOMIZE`
+  table, the `isTrim*` predicates (dress/trim boundary) and `SASH_BAND`.
+- Confirm Lulu's facing and walk clip (see the two NOTEs above).
+- Sit animation someday (neither pack has a sit clip, so working = standing).
+- Foot-slide tuning: match WALK_SPEED (1.05) to each run clip's stride via
+  timeScale.
