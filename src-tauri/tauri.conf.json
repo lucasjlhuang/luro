@@ -35,8 +35,7 @@
     "active": true,
     "targets": [
       "app",
-      "dmg",
-      "nsis"
+      "dmg"
     ],
     "category": "Productivity",
     "shortDescription": "Shared always-on-top desk for two",

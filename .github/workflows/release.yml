@@ -1,8 +1,8 @@
 name: Build installers
 
-# Tauri builds on the platform it targets — a Windows .exe cannot be produced
-# from a Mac. This runs the build on each OS and attaches the installers to a
-# draft GitHub release.
+# macOS only, by choice — Windows was dropped. Tauri builds on the platform it
+# targets, so restoring Windows means adding a windows-latest entry to the
+# matrix again (and note WiX/MSI fails on the Server 2025 runner; use nsis).
 #
 # Push a tag to cut a release:   git tag v0.1.0 && git push origin v0.1.0
 # Or run it by hand from the Actions tab (workflow_dispatch) to get artifacts
@@ -26,10 +26,6 @@ jobs:
           - platform: macos-latest
             args: '--target universal-apple-darwin'
             rust-targets: 'aarch64-apple-darwin,x86_64-apple-darwin'
-          # .msi and an NSIS .exe installer
-          - platform: windows-latest
-            args: ''
-            rust-targets: ''
 
     runs-on: ${{ matrix.platform }}
     steps:

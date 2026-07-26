@@ -66,11 +66,9 @@ With the seal, the tester instead gets *"Apple cannot check it for malicious sof
   longer works on macOS 15+, Apple removed that bypass), or
 - drag the app to `/Applications`, then `xattr -dr com.apple.quarantine /Applications/luro.app`
 
-**Windows** — SmartScreen: "More info" → "Run anyway".
-
 Removing the warning entirely means an Apple Developer Program membership ($99/yr) for a
-Developer ID certificate plus notarization via `notarytool`, and a code-signing certificate on
-Windows. Notarization itself is free once enrolled.
+Developer ID certificate plus notarization via `notarytool`. Notarization itself is free once
+enrolled.
 
 Icons are generated from `src-tauri/app-icon.png` with `npx tauri icon src-tauri/app-icon.png`
 (then delete the `android/` and `ios/` sets it emits — this is a desktop-only app). The source is
