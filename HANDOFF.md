@@ -100,12 +100,36 @@ no longer a global CLIPS const.
   - Lulu pool: attack, blocking_loop, buff, gathering, get_hit, jump,
     run_attack, run_back. (blocking_loop was excluded for Roro but NOT listed
     for Lulu — user's list, left as given.)
-- Hidden per role via `CUSTOMIZE.hide` (loose substring match on mesh AND
-  material names): both hide `outfit_hat` and `weapon`; Lulu also hides
-  `outfit_cloak` (the cape).
-- The staff-stow-while-sleeping logic (`fitted.weapons`, hidden when SLEEPING
-  and not being dragged) still exists but is INERT while 'weapon' is in `hide`.
-  Drop 'weapon' from `hide` to bring the staff back and it applies again.
+- **Work gear** (`CUSTOMIZE.gear`, loose substring match on mesh AND material
+  names): `outfit_hat` + `weapon` for both, plus `outfit_cloak` for Lulu.
+  Visible ONLY while WORKING (not dragged, not mid-teleport); hidden when
+  idling, roaming, carried or in bed. Gear is also excluded from the height fit,
+  so putting the hat on cannot change the character's size.
+- **Size is fixed and identical for both**: `CHAR_HEIGHT` 1.27 = the chairs'
+  height (back top 1.133 x scale 1.12). `HEAD_TOP` is tied to it.
+- The old resize/drift-on-character-swap bug: `computeSceneBox` was measuring
+  the ANIMATED CLONE, and a SkinnedMesh's bounds follow its current pose, so
+  a re-fit mid-animation produced a different scale and a different recentring
+  offset. It now measures `srcScene` (never animated, so always the bind pose)
+  with gear skipped. Do not point it back at `scene`.
+- **Roaming is a nav graph**, not a per-user list of spots. `OBSTACLES` holds
+  furniture footprints in world x/z (the desk sits in a `scale={0.8}
+  position={[0.02,0,-0.43]}` group, so its numbers are the SCALED ones, and it
+  uses the TOP footprint because the top is at world y 1.14 — below head height,
+  so the overhang is not walkable). `BODY_R` 0.16 is the character's half-width
+  and is the dial if they graze furniture.
+  - The room is tight: the bed reaches the left wall and the desk + its two
+    chairs span the middle, so the ONLY route from the open right side to the
+    monstera corner is the lane at z ~ -0.68, threading the 0.46-wide gap
+    between the back of the bed (z -0.45) and the front of the chairs (z
+    -0.909). That leaves a ~0.14 lane after clearance. Waypoints 6-7-8 sit on
+    it in a straight line on purpose.
+  - `NEIGHBOURS` joins waypoints only where the straight segment between them is
+    clear, so characters can never cut through furniture; wandering picks a
+    random neighbour. Verified: all 13 waypoints are in free space and all are
+    reachable from each other.
+  - Dropping a character anywhere else runs `nudgeFree` (push out of furniture)
+    then `nearestWaypoint` (nearest node with a clear path).
 - Kept intact: smoke-puff teleports between statuses, drag (head-under-cursor
   via grab plane at CARRY_LIFT+HEAD_TOP), drop-zone emojis (bed emoji rect
   BED_RECT, chairs CHAIR_XS/CHAIR_Z; drop elsewhere = roam; drag cancels speech

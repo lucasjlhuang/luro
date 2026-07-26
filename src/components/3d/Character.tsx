@@ -32,17 +32,22 @@ import luluUrl from '../../assets/models/lulu.glb?url';
  */
 interface ModelSpec {
   url: string;
-  height: number;
   yaw: number;
   clips: { idle: string; walk: string; work: string; sleep: string; carry: string };
   neverRandom: string[];
 }
 
+/**
+ * Both characters are fitted to exactly this height — matching the chairs
+ * (back top 1.133 * scale 1.12). Fitting is measured in the BIND POSE with the
+ * gear excluded, so the size is identical for both roles and never shifts.
+ */
+const CHAR_HEIGHT = 1.27;
+
 const MODELS: Record<Role, ModelSpec> = {
   // Lulu — mage pack. Walk uses run_mage (walk.mage is on the exclusion list).
   USER_A: {
     url: luluUrl,
-    height: 1.1,
     yaw: Math.PI, // the source model faces -z, so add a half turn
     clips: {
       idle: 'Armatureidle_mage',
@@ -64,7 +69,6 @@ const MODELS: Record<Role, ModelSpec> = {
   // Roro — necromancer pack.
   USER_B: {
     url: roroUrl,
-    height: 1.1,
     yaw: Math.PI,
     clips: {
       idle: 'Armatureidle_necromancer',
@@ -134,22 +138,23 @@ const isTrim = (h: number, s: number) => isTrimGold(h, s) || isTrimBlue(h, s);
 const SASH_BAND: [number, number] = [0.5, 0.72];
 
 /**
- * Per-role model surgery, keyed by material name: hide parts (the hood has
- * real hair underneath) and repaint others. Materials are cloned per instance
- * so the two roles can differ despite sharing one GLB.
+ * Per-role model surgery, keyed by material name: which meshes are work gear
+ * and how to repaint the rest. Materials are cloned per instance so the two
+ * roles can differ despite sharing one GLB.
  */
-const CUSTOMIZE: Record<Role, { hide: string[]; paint: Record<string, Band[]> }> = {
-  // 'weapon' hides the staff outright. Drop it from `hide` to bring the staff
-  // back; the sleeping/stow logic in the frame loop then applies again.
+const CUSTOMIZE: Record<Role, { gear: string[]; paint: Record<string, Band[]> }> = {
+  // `gear` = worn only on the job: hidden while idling, roaming, carried or in
+  // bed, and shown while WORKING. It is also excluded from the height fit, so
+  // putting the hat on never changes how big the character is.
   USER_A: {
-    hide: ['outfit_hat', 'weapon', 'outfit_cloak'], // no hat, no staff, no cape
+    gear: ['outfit_hat', 'weapon', 'outfit_cloak'], // hat, staff, cape
     paint: {
       skin_hair: [{ to: '#1A120B' }], // dark brown, near black
       skin_eyes: [{ match: (_h, s) => s >= 0.25, to: '#A8763E' }], // hazel brown
     },
   },
   USER_B: {
-    hide: ['outfit_hat', 'weapon'],
+    gear: ['outfit_hat', 'weapon'], // no cape mesh in this pack
     paint: {
       skin_hair: [{ to: '#893718' }], // light brown
       outfit_body: [
@@ -450,7 +455,7 @@ const BUBBLE_FADE = 500; // then one gentle fade
 const BUBBLE_TTL = BUBBLE_HOLD + BUBBLE_FADE;
 const ROOM_CLAMP = 2.9;
 const CARRY_LIFT = 0.4;
-const HEAD_TOP = 1.1;
+const HEAD_TOP = CHAR_HEIGHT; // bubble anchor + grab plane sit at the head
 
 /* Drop zones shown while carrying: bed and both chairs. */
 const CHAIR_XS = [0.62, -0.42];
@@ -607,32 +612,126 @@ function BubbleEditor({ onClose }: { onClose: () => void }) {
 interface Spots {
   chairX: number;
   lieZ: number;
-  idle: Array<[number, number]>;
+  /** Which waypoint this character starts from, so the two don't stack up. */
+  start: number;
 }
 
 /** Per-user destinations so two characters never fight over one spot. */
 const SPOTS: Record<'me' | 'partner', Spots> = {
-  me: {
-    chairX: 0.62,
-    lieZ: 0.75,
-    idle: [
-      [2.2, 0.4],
-      [1.1, 1.9],
-      [1.7, -0.7],
-      [0.95, 0.9],
-    ],
-  },
-  partner: {
-    chairX: -0.42,
-    lieZ: 1.55,
-    idle: [
-      [1.4, 2.0],
-      [2.5, -0.5],
-      [1.15, 0.5],
-      [2.3, 1.2],
-    ],
-  },
+  me: { chairX: 0.62, lieZ: 0.75, start: 0 },
+  partner: { chairX: -0.42, lieZ: 1.55, start: 5 },
 };
+
+/* ------------------------------ roaming ------------------------------ */
+
+/**
+ * Furniture footprints in world x/z, measured from IsometricRoom (the desk sits
+ * inside a `scale={0.8} position={[0.02,0,-0.43]}` group, so its numbers are
+ * the scaled ones). Characters never enter these.
+ *
+ * The desk uses its TOP footprint, not the narrower body: the top sits at world
+ * y 1.14, below head height, so walking under the overhang would clip.
+ */
+const BODY_R = 0.16; // character half-width used for clearance
+const OBSTACLES = [
+  { minX: -3.15, maxX: 0.85, minZ: -0.45, maxZ: 2.15 }, // bed
+  { minX: -1.38, maxX: 1.58, minZ: -2.75, maxZ: -1.55 }, // desk (top)
+  { minX: 0.329, maxX: 0.911, minZ: -1.491, maxZ: -0.909 }, // chair, right
+  { minX: -0.711, maxX: -0.129, minZ: -1.491, maxZ: -0.909 }, // chair, left
+  { minX: -3.05, maxX: -2.15, minZ: -2.95, maxZ: -2.05 }, // monstera
+  { minX: 2.2, maxX: 3.1, minZ: -3.0, maxZ: -2.1 }, // laundry basket
+  { minX: -2.93, maxX: -2.17, minZ: 2.17, maxZ: 2.93 }, // toy car
+];
+
+function blocked(x: number, z: number): boolean {
+  if (Math.abs(x) > ROOM_CLAMP || Math.abs(z) > ROOM_CLAMP) return true;
+  return OBSTACLES.some(
+    (o) =>
+      x > o.minX - BODY_R && x < o.maxX + BODY_R && z > o.minZ - BODY_R && z < o.maxZ + BODY_R
+  );
+}
+
+/** Walk the segment in small steps — the gaps here are only ~0.14 wide. */
+function pathClear(ax: number, az: number, bx: number, bz: number): boolean {
+  const steps = Math.max(2, Math.ceil(Math.hypot(bx - ax, bz - az) / 0.06));
+  for (let i = 0; i <= steps; i += 1) {
+    const t = i / steps;
+    if (blocked(ax + (bx - ax) * t, az + (bz - az) * t)) return false;
+  }
+  return true;
+}
+
+/**
+ * Roaming graph. The room is tight — the bed reaches the left wall and the desk
+ * plus its two chairs span the middle — so the ONLY route between the open right
+ * side and the monstera corner is the lane at z ~ -0.68, threading between the
+ * back of the bed (z -0.45) and the front of the chairs (z -0.909). Waypoints
+ * are joined only where the straight line between them is clear, so characters
+ * follow that lane instead of cutting through furniture.
+ */
+const WAYPOINTS: Array<[number, number]> = [
+  [2.35, 0.3], // 0  open floor, right of the bed
+  [1.45, 1.6], // 1
+  [2.45, 2.1], // 2
+  [1.3, -0.1], // 3
+  [0.45, 2.6], // 4  the strip in front of the bed
+  [-1.15, 2.6], // 5
+  [1.9, -0.68], // 6  the lane behind the bed / in front of the chairs
+  [0.1, -0.68], // 7
+  [-1.6, -0.68], // 8
+  [-2.6, -1.5], // 9  monstera corner
+  [-1.85, -2.55], // 10 behind the desk, left
+  [2.3, -1.6], // 11 beside the laundry basket
+  [2.6, -1.75], // 12
+];
+
+/** Waypoints reachable from each one in a straight line. */
+const NEIGHBOURS: number[][] = WAYPOINTS.map(([ax, az], i) =>
+  WAYPOINTS.reduce<number[]>((acc, [bx, bz], jj) => {
+    if (jj !== i && pathClear(ax, az, bx, bz)) acc.push(jj);
+    return acc;
+  }, [])
+);
+
+/** Nearest waypoint this position can actually walk to. */
+function nearestWaypoint(x: number, z: number): number {
+  let best = 0;
+  let bestD = Infinity;
+  let bestClear = false;
+  WAYPOINTS.forEach(([wx, wz], i) => {
+    const d = Math.hypot(wx - x, wz - z);
+    const clear = pathClear(x, z, wx, wz);
+    // prefer a reachable one; fall back to the closest if none is reachable
+    if ((clear && !bestClear) || (clear === bestClear && d < bestD)) {
+      best = i;
+      bestD = d;
+      bestClear = clear;
+    }
+  });
+  return best;
+}
+
+/** Push a dropped character out of any furniture it landed in. */
+function nudgeFree(x: number, z: number): [number, number] {
+  if (!blocked(x, z)) return [x, z];
+  let best: [number, number] = [x, z];
+  let bestD = Infinity;
+  for (let r = 0.15; r <= 2.4; r += 0.15) {
+    for (let a = 0; a < 24; a += 1) {
+      const ang = (a / 24) * Math.PI * 2;
+      const nx = x + Math.cos(ang) * r;
+      const nz = z + Math.sin(ang) * r;
+      if (blocked(nx, nz)) continue;
+      const d = Math.hypot(nx - x, nz - z);
+      if (d < bestD) {
+        bestD = d;
+        best = [nx, nz];
+      }
+    }
+    if (bestD < Infinity) break;
+  }
+  return best;
+}
 
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 const TMP_VEC = new THREE.Vector3();
@@ -666,11 +765,15 @@ function makeZzzTexture(): THREE.CanvasTexture {
  * World bounds with skinning applied — Box3.setFromObject measures a
  * SkinnedMesh's unskinned base geometry, which can be wildly off.
  */
-function computeSceneBox(scene: THREE.Object3D): THREE.Box3 {
+function computeSceneBox(
+  scene: THREE.Object3D,
+  skip?: (mesh: THREE.Mesh) => boolean
+): THREE.Box3 {
   scene.updateMatrixWorld(true);
   const box = new THREE.Box3();
   box.makeEmpty();
   scene.traverse((obj) => {
+    if (obj instanceof THREE.Mesh && skip?.(obj)) return;
     if (obj instanceof THREE.SkinnedMesh) {
       obj.computeBoundingBox();
       if (obj.boundingBox) box.union(TMP_BOX.copy(obj.boundingBox).applyMatrix4(obj.matrixWorld));
@@ -747,26 +850,36 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
   const { actions, mixer } = useAnimations(animations, scene);
 
   const fitted = useMemo(() => {
-    const box = computeSceneBox(scene);
-    const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
-    const scale = model.height / Math.max(size.y, 1e-6);
     const custom = CUSTOMIZE[role];
     const matches = (name: string, key: string) =>
       name.toLowerCase().includes(key.toLowerCase());
-    const weapons: THREE.Object3D[] = [];
+    const isGear = (obj: THREE.Mesh) => {
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      const names = [obj.name, ...mats.map((m) => m.name)];
+      return custom.gear.some((g) => names.some((n) => matches(n, g)));
+    };
+
+    // Measure the SOURCE scene, not the animated clone: a SkinnedMesh's bounds
+    // follow its current pose, so measuring the clone made the character
+    // resize (and slide off-axis) whenever it was re-fitted mid-animation —
+    // which is exactly what swapping characters in the settings menu did. The
+    // source is never animated, so it always reads the bind pose. Gear is
+    // excluded so putting the hat on can't change the size either.
+    const box = computeSceneBox(srcScene, isGear);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const scale = CHAR_HEIGHT / Math.max(size.y, 1e-6);
+
+    const gear: THREE.Object3D[] = [];
     scene.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh)) return;
       obj.castShadow = true;
       obj.frustumCulled = false; // skinned bounds are wrong mid-clip
-      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-      const meshNames = [obj.name, ...mats.map((m) => m.name)];
-      if (custom.hide.some((h) => meshNames.some((n) => matches(n, h)))) {
-        obj.visible = false;
-        return;
+      if (isGear(obj)) {
+        gear.push(obj);
+        obj.visible = false; // shown again only while WORKING
       }
-      // Staff + its glow: stowed while asleep, so it isn't held in bed.
-      if (meshNames.some((n) => matches(n, 'weapon'))) weapons.push(obj);
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
       // Loose name match, then repaint the emissive atlas (see paintMaterial —
       // this pack is emissive-only, and one atlas covers dress + sash + trim).
       const paintOne = (mat: THREE.Material): THREE.Material => {
@@ -781,8 +894,8 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
       };
       obj.material = Array.isArray(obj.material) ? mats.map(paintOne) : paintOne(mats[0]);
     });
-    return { scale, offset: [-center.x, -box.min.y, -center.z] as const, weapons };
-  }, [scene, model.height, role]);
+    return { scale, offset: [-center.x, -box.min.y, -center.z] as const, gear };
+  }, [scene, srcScene, role]);
 
   /** Flourish pool, derived from whatever clips this model actually ships. */
   const flourishes = useMemo(() => flourishesFrom(animations, model), [animations, model]);
@@ -856,10 +969,10 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
 
   const qStand = useMemo(() => new THREE.Quaternion(), []);
   const sim = useRef<SimState>({
-    x: spots.idle[0][0],
-    z: spots.idle[0][1],
+    x: WAYPOINTS[spots.start][0],
+    z: WAYPOINTS[spots.start][1],
     yaw: 0,
-    wp: 0,
+    wp: spots.start,
     dwell: 0,
     lie: 0,
     scale: 1,
@@ -887,7 +1000,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     // +PI/2 so the bed pose nets out unchanged under the model's half turn.
     if (st === 'SLEEPING') return { x: -0.55, z: spots.lieZ, yaw: Math.PI / 2 };
     if (remote) return { x: remote.x, z: remote.z, yaw: remote.yaw as number | null };
-    const wp = spots.idle[s.wp % spots.idle.length];
+    const wp = WAYPOINTS[s.wp % WAYPOINTS.length];
     return { x: wp[0], z: wp[1], yaw: null as number | null };
   };
 
@@ -935,6 +1048,12 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
           sim.current.chairX = chair;
           useAppStore.getState().setMyStatus('WORKING');
         } else {
+          // Roam from wherever they landed — but not from inside the desk or
+          // a plant pot, and heading for a waypoint they can actually reach.
+          const [fx, fz] = nudgeFree(sx, sz);
+          sim.current.x = fx;
+          sim.current.z = fz;
+          sim.current.wp = nearestWaypoint(fx, fz);
           sim.current.phase = 'settle'; // stand at the drop point for a beat
           sim.current.dwell = 0;
         }
@@ -1016,7 +1135,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
         s.z = damp(s.z, remote.z, 12);
         s.yaw = dampAngle(s.yaw, remote.yaw, 10, dt);
       } else if (s.phase === 'walk') {
-        const wp = spots.idle[s.wp % spots.idle.length];
+        const wp = WAYPOINTS[s.wp % WAYPOINTS.length];
         const dx = wp[0] - s.x;
         const dz = wp[1] - s.z;
         const dist = Math.hypot(dx, dz);
@@ -1038,7 +1157,12 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
         s.dwell += dt;
         if (s.dwell > 3.2 && !extraPlaying.current) {
           s.dwell = 0;
-          s.wp++;
+          // Step to a neighbour, so the straight line there stays clear of
+          // furniture. Falls back to re-picking the nearest reachable node.
+          const options = NEIGHBOURS[s.wp % WAYPOINTS.length];
+          s.wp = options.length
+            ? options[Math.floor(Math.random() * options.length)]
+            : nearestWaypoint(s.x, s.z);
           s.phase = 'walk';
         }
       }
@@ -1054,10 +1178,10 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     /* ---------- clip selection ---------- */
     const carried =
       s.dragging || (remote !== null && remote.carried && status === 'IDLE' && s.tele === 'none');
-    // Stow the staff in bed — nobody sleeps holding one.
-    const stowed = status === 'SLEEPING' && !s.dragging;
-    fitted.weapons.forEach((w) => {
-      w.visible = !stowed;
+    // Hat, staff and cape are work gear: worn at the desk, off everywhere else.
+    const atWork = status === 'WORKING' && !s.dragging && s.tele === 'none';
+    fitted.gear.forEach((g) => {
+      g.visible = atWork;
     });
 
     if (carried) {
