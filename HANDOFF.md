@@ -100,12 +100,13 @@ no longer a global CLIPS const.
   - Lulu pool: attack, blocking_loop, buff, gathering, get_hit, jump,
     run_attack, run_back. (blocking_loop was excluded for Roro but NOT listed
     for Lulu — user's list, left as given.)
-- `CUSTOMIZE.hide` is permanent (`outfit_hat` for both — the hood covers the
-  real hair mesh; the user explicitly does NOT want hats at work either).
-- **Work gear** (`CUSTOMIZE.gear`): `weapon` for both, plus `outfit_cloak` for
-  Lulu. Visible ONLY while WORKING (not dragged, not mid-teleport); hidden when
-  idling, roaming, carried or in bed. Both hide and gear are excluded from the
-  height fit, so gear can never change the character's size.
+- `CUSTOMIZE.hide` is permanent: `outfit_hat` for both (the hood covers the real
+  hair mesh; the user does NOT want hats at work either) plus `outfit_cloak`
+  for Lulu.
+- **Work gear** (`CUSTOMIZE.gear`): `weapon` only, for both. Visible ONLY while
+  WORKING (not dragged, not mid-teleport); hidden when idling, roaming, carried
+  or in bed. Lulu's cape is on `hide`, so it never appears at all. Both hide and
+  gear are excluded from the height fit, so gear can never change the size.
 - **Size is fixed and identical for both**: `CHAR_HEIGHT` 1.27 = the chairs'
   height (back top 1.133 x scale 1.12). `HEAD_TOP` is tied to it.
 - The old resize/drift-on-character-swap bug: `computeSceneBox` was measuring
@@ -150,6 +151,11 @@ no longer a global CLIPS const.
   x chair scale 1.12) — working stands ON the seat at [chairX, CHAIR_Z], since
   neither pack has a sit clip and standing behind it clipped through the chair.
   `BED_Y` 0.88 is the mattress. `s.stand` damps between them.
+- **Sleeping spots are keyed by ROLE** (`SLEEP_Z`: Lulu/USER_A 1.55, Roro/USER_B
+  0.75), not by who is looking — they used to sit on `SPOTS[me|partner]`, so the
+  two peers saw the sides swapped. Screen-right is world (0.707, 0, -0.707), so
+  a LARGER z sits further screen-LEFT: Lulu lies left of Roro. (`chairX` is
+  still per-variant; only the bed was asked about.)
 - **The two packs' sleep clips fall in OPPOSITE directions.** Measured at the
   final frame: Roro's head ends at model z +0.53, Lulu's at -0.555. With one
   shared yaw, Lulu ended up head-down at the FOOT of the bed. `ModelSpec.
@@ -204,6 +210,15 @@ Two extra mechanisms exist for parts that share a material AND a colour:
   lightness AND contrast. Colour alone is not enough: the sash carries far more
   internal contrast (std 0.095) than the dress cloth (0.060) and still read as a
   band when only its mean was matched.
+
+**Day/night:** these models are fullbright, so dimming the room's lamps does
+nothing to them — they stayed at full glow against a dark room. `emissive` is
+the only channel that reaches them, so the frame loop scales `emissiveIntensity`
+to `NIGHT_EMISSIVE` (0.38) and lerps the tint toward `NIGHT_TINT` (#8c9ad0),
+damped at the same rate as SceneLights. Those two consts are the dial. The base
+emissive is stashed ON the material (`mat.baseEmissive`), not in the fit result:
+unpainted materials are shared with the source scene and outlive a re-fit, so
+re-reading a live, already-tinted emissive would compound it on every role swap.
 
 **Verify recolours headlessly before shipping** — a hue-wrap bug rendered the
 pink sash BLUE and the build could not have caught it. Extract the atlas, port

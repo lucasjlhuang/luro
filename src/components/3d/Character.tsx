@@ -147,6 +147,17 @@ const isTrim = (h: number, s: number) => isTrimGold(h, s) || isTrimBlue(h, s);
 const SASH_BAND: [number, number] = [0.5, 0.72];
 
 /**
+ * Day/night response. These models are FULLBRIGHT — they render straight out of
+ * their emissive map and take no light from the scene — so dimming the room's
+ * lamps left them glowing at full strength against a dark room. `emissive` is
+ * the only channel that reaches them, so night scales its intensity and cools
+ * its tint by hand. Roughly tracks the room: ambient falls to 0.32 of day,
+ * directional to 0.11. Turn these two down for a darker character at night.
+ */
+const NIGHT_EMISSIVE = 0.38; // intensity multiplier at full night
+const NIGHT_TINT = new THREE.Color('#8c9ad0'); // moonlight cast
+
+/**
  * Per-role model surgery, keyed by material name: which meshes are work gear
  * and how to repaint the rest. Materials are cloned per instance so the two
  * roles can differ despite sharing one GLB.
@@ -157,8 +168,8 @@ const CUSTOMIZE: Record<Role, { hide: string[]; gear: string[]; paint: Record<st
   // bed, shown while WORKING. Both are excluded from the height fit, so gear
   // can never change how big the character is.
   USER_A: {
-    hide: ['outfit_hat'],
-    gear: ['weapon', 'outfit_cloak'], // staff + cape
+    hide: ['outfit_hat', 'outfit_cloak'], // no hat, no cape — not even at work
+    gear: ['weapon'], // staff only
     paint: {
       skin_hair: [{ to: '#1A120B' }], // dark brown, near black
       skin_eyes: [{ match: (_h, s) => s >= 0.25, to: '#A8763E' }], // hazel brown
@@ -627,16 +638,23 @@ function BubbleEditor({ onClose }: { onClose: () => void }) {
 
 interface Spots {
   chairX: number;
-  lieZ: number;
   /** Which waypoint this character starts from, so the two don't stack up. */
   start: number;
 }
 
 /** Per-user destinations so two characters never fight over one spot. */
 const SPOTS: Record<'me' | 'partner', Spots> = {
-  me: { chairX: 0.62, lieZ: 0.75, start: 0 },
-  partner: { chairX: -0.42, lieZ: 1.55, start: 5 },
+  me: { chairX: 0.62, start: 0 },
+  partner: { chairX: -0.42, start: 5 },
 };
+
+/**
+ * Which side of the bed each character sleeps on — keyed by ROLE so both peers
+ * see the same arrangement (it used to key off who was looking, so the sides
+ * swapped between the two machines). Screen-right is world (0.707, 0, -0.707),
+ * so a LARGER z sits further to the screen-left: Lulu lies left of Roro.
+ */
+const SLEEP_Z: Record<Role, number> = { USER_A: 1.55, USER_B: 0.75 };
 
 /* ------------------------------ roaming ------------------------------ */
 
@@ -751,6 +769,7 @@ function nudgeFree(x: number, z: number): [number, number] {
 
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 const TMP_VEC = new THREE.Vector3();
+const TMP_COLOR = new THREE.Color();
 const TMP_BOX = new THREE.Box3();
 
 function dampAngle(current: number, target: number, lambda: number, dt: number): number {
@@ -822,6 +841,8 @@ interface SimState {
   stand: number;
   /** Seconds left of re-measuring skinned bounds after a pose change. */
   poseSettle: number;
+  /** Damped 0..1 day->night blend for the emissive tint. */
+  night: number;
   /** Which chair to work at — set by dropping the villager on one. */
   chairX: number;
 }
@@ -843,6 +864,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
   const role = useAppStore((s) => (variant === 'me' ? s.role : partnerOf(s.role)));
   const model = MODELS[role];
 
+  const isNight = useAppStore((st) => st.isNightMode);
   // The editable speech bubble replaces the old speech menu.
   const editing = useAppStore((s) => variant === 'me' && s.activeModal === 'SPEECH');
   // Reactive mirror of sim.dragging so drop markers can mount/unmount.
@@ -894,6 +916,9 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     const scale = CHAR_HEIGHT / Math.max(size.y, 1e-6);
 
     const gear: THREE.Object3D[] = [];
+    // Every material, with its original emissive stashed, so the night tint can
+    // be re-applied from the base each frame instead of compounding.
+    const lit: Array<{ mat: THREE.Material & { emissive: THREE.Color; emissiveIntensity: number }; base: THREE.Color }> = [];
     scene.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh)) return;
       obj.castShadow = true;
@@ -920,6 +945,23 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
         return mat;
       };
       obj.material = Array.isArray(obj.material) ? mats.map(paintOne) : paintOne(mats[0]);
+      const applied = Array.isArray(obj.material) ? obj.material : [obj.material];
+      applied.forEach((m) => {
+        const em = m as THREE.Material & {
+          emissive?: THREE.Color;
+          emissiveIntensity?: number;
+          baseEmissive?: THREE.Color;
+        };
+        if (!em.emissive || lit.some((e) => e.mat === em)) return;
+        // Stash on the material, not in this array: a material can outlive the
+        // fit (unpainted ones are shared with the source scene), and re-reading
+        // a live emissive that night had already tinted would compound it.
+        if (!em.baseEmissive) em.baseEmissive = em.emissive.clone();
+        lit.push({
+          mat: em as THREE.Material & { emissive: THREE.Color; emissiveIntensity: number },
+          base: em.baseEmissive,
+        });
+      });
     });
     // The head bone drives the Zzz and the speech bubble. Reading it live
     // beats a per-model offset: each pack's sleep clip ends in a different
@@ -942,6 +984,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
       gear,
       head: head as THREE.Object3D | null,
       skinned,
+      lit,
     };
   }, [scene, srcScene, role]);
 
@@ -1031,6 +1074,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     dragging: false,
     stand: FLOOR_Y,
     poseSettle: 2.5,
+    night: 0,
     chairX: spots.chairX,
   });
 
@@ -1048,7 +1092,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     // No sit clip in either pack, so "working" stands ON the chair seat
     // (CHAIR_SEAT_Y) rather than clipping through it from behind.
     if (st === 'WORKING') return { x: s.chairX, z: CHAIR_Z, yaw: Math.PI };
-    if (st === 'SLEEPING') return { x: -0.55, z: spots.lieZ, yaw: model.sleepYaw };
+    if (st === 'SLEEPING') return { x: -0.55, z: SLEEP_Z[role], yaw: model.sleepYaw };
     if (remote) return { x: remote.x, z: remote.z, yaw: remote.yaw as number | null };
     const wp = WAYPOINTS[s.wp % WAYPOINTS.length];
     return { x: wp[0], z: wp[1], yaw: null as number | null };
@@ -1320,6 +1364,16 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
       });
       mat.opacity = 0.85 * (1 - prog);
       if (prog >= 1) p.active = false;
+    });
+
+    /* ---------- day / night ----------
+     * Fullbright models take no light from the scene, so the room's lamps
+     * dimming does nothing to them on its own — fade the emissive by hand. */
+    s.night = damp(s.night, isNight ? 1 : 0, 5);
+    const strength = 1 - (1 - NIGHT_EMISSIVE) * s.night;
+    fitted.lit.forEach(({ mat, base }) => {
+      mat.emissiveIntensity = strength;
+      mat.emissive.copy(base).lerp(TMP_COLOR.copy(base).multiply(NIGHT_TINT), s.night);
     });
 
     /* ---------- floating Zzz ---------- */
