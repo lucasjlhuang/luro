@@ -46,11 +46,14 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "macOS": {
+      "signingIdentity": "-"
+    }
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU0RTRCRkEyMDkwNUIwNEQKUldSTnNBVUpvci9rVlAvaUlvUmFPQ3RaNmt2RHlaMUlmRG85aVdoUTJWbUlyZ2xDL3BsVGlOM2cK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ5M0QwMUEwNjg4MTIwRQpSV1FPRW9nR0d0Q1REZGFlMWdkUHFDZkYvOElWV1dqOWF4K2ZUOXFGV3NWQ1VRVUZaRG5jd2liSgo=",
       "endpoints": [
         "https://github.com/lucasjlhuang/luro/releases/latest/download/latest.json"
       ]
