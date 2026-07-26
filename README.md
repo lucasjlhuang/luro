@@ -53,9 +53,24 @@ push a tag (`git tag v0.1.0 && git push origin v0.1.0`) or run the workflow by h
 Actions tab, and it attaches a universal macOS `.dmg` and the Windows installers to a draft
 release. This requires the repo to have a GitHub remote.
 
-Neither build is code-signed, so first launch shows a warning — right-click → Open on macOS,
-"More info" → "Run anyway" on Windows. Signing needs an Apple Developer ID and a Windows
-certificate.
+### Sending a build to someone else
+
+Neither build is signed with a real developer certificate, so the first launch is blocked.
+
+**macOS** — the app is ad-hoc signed (`bundle.macOS.signingIdentity: "-"`), which is what keeps
+macOS from calling it *"damaged"*; without it the bundle has no `_CodeSignature` seal, validation
+fails before Gatekeeper reaches a policy decision, and the only button offered is Move to Trash.
+With the seal, the tester instead gets *"Apple cannot check it for malicious software"*, and can:
+
+- **System Settings → Privacy & Security → Security → "Open Anyway"** (right-click → Open no
+  longer works on macOS 15+, Apple removed that bypass), or
+- drag the app to `/Applications`, then `xattr -dr com.apple.quarantine /Applications/luro.app`
+
+**Windows** — SmartScreen: "More info" → "Run anyway".
+
+Removing the warning entirely means an Apple Developer Program membership ($99/yr) for a
+Developer ID certificate plus notarization via `notarytool`, and a code-signing certificate on
+Windows. Notarization itself is free once enrolled.
 
 Icons are generated from `src-tauri/app-icon.png` with `npx tauri icon src-tauri/app-icon.png`
 (then delete the `android/` and `ios/` sets it emits — this is a desktop-only app). The source is
