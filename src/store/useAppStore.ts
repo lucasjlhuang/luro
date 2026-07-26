@@ -15,6 +15,7 @@ export type ModalType =
   | 'CORKBOARD'
   | 'WHITEBOARD'
   | 'HABITS'
+  | 'WARDROBE'
   | 'SETTINGS'
   | 'SPEECH';
 export type TaskStatus = 'TODO' | 'IN_PROGRESS';
@@ -47,6 +48,101 @@ export interface Task {
   status: TaskStatus;
   createdAt: number;
 }
+
+/* ------------------------------------------------------------------ */
+/* Appearance                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Accessories are listed once, here, so the wardrobe panel can render them
+ * generically — adding a scarf later means one entry plus its geometry, not a
+ * new checkbox wired up by hand.
+ */
+export const ACCESSORIES = [
+  { key: 'glasses', label: 'Glasses' },
+  { key: 'hat', label: 'Hat' },
+  { key: 'cape', label: 'Cape' },
+  { key: 'staff', label: 'Staff (at work)' },
+] as const;
+
+export type AccessoryKey = (typeof ACCESSORIES)[number]['key'];
+export type PatternKey = 'none' | 'flowers';
+
+export interface Appearance {
+  /** Hair runs as a gradient: roots at the top, tips at the bottom. */
+  hairTop: string;
+  hairBottom: string;
+  eyes: string;
+  /** Main garment — Roro's dress, Lulu's tunic. */
+  outfit: string;
+  trim: string;
+  freckles: boolean;
+  blush: boolean;
+  stubble: boolean;
+  pattern: PatternKey;
+  accessories: Record<AccessoryKey, boolean>;
+}
+
+/** The looks we arrived at by hand; the panel starts from these. */
+const DEFAULT_APPEARANCE: Record<Role, Appearance> = {
+  USER_A: {
+    hairTop: '#1A120B',
+    hairBottom: '#1A120B',
+    eyes: '#6B4A24',
+    outfit: '#7D956D',
+    trim: '#5A6B4E',
+    freckles: true,
+    blush: false,
+    stubble: true,
+    pattern: 'none',
+    accessories: { glasses: true, hat: false, cape: false, staff: true },
+  },
+  USER_B: {
+    hairTop: '#4A250C',
+    hairBottom: '#9C5518',
+    eyes: '#7D956D',
+    outfit: '#7D956D',
+    trim: '#5A6B4E',
+    freckles: false,
+    blush: true,
+    stubble: false,
+    pattern: 'flowers',
+    accessories: { glasses: false, hat: false, cape: false, staff: true },
+  },
+};
+
+export interface AppearanceState {
+  looks: Record<Role, Appearance>;
+  updatedAt: number;
+}
+
+const isHex = (v: unknown): v is string => typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
+
+/** Guards colours and unknown keys coming from a peer or an older build. */
+const sanitizeAppearance = (state: AppearanceState | undefined): AppearanceState => {
+  const one = (role: Role): Appearance => {
+    const d = DEFAULT_APPEARANCE[role];
+    const a = state?.looks?.[role];
+    if (!a) return { ...d, accessories: { ...d.accessories } };
+    const pick = (v: unknown, fb: string) => (isHex(v) ? v : fb);
+    return {
+      hairTop: pick(a.hairTop, d.hairTop),
+      hairBottom: pick(a.hairBottom, d.hairBottom),
+      eyes: pick(a.eyes, d.eyes),
+      outfit: pick(a.outfit, d.outfit),
+      trim: pick(a.trim, d.trim),
+      freckles: a.freckles === true,
+      blush: a.blush === true,
+      stubble: a.stubble === true,
+      pattern: a.pattern === 'flowers' ? 'flowers' : 'none',
+      accessories: ACCESSORIES.reduce(
+        (acc, { key }) => ({ ...acc, [key]: a.accessories?.[key] === true }),
+        {} as Record<AccessoryKey, boolean>
+      ),
+    };
+  };
+  return { updatedAt: state?.updatedAt ?? 0, looks: { USER_A: one('USER_A'), USER_B: one('USER_B') } };
+};
 
 /** Monday-first, so `days[0]` is Monday and `days[6]` Sunday. */
 export const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
@@ -149,12 +245,14 @@ interface FullSyncPayload {
   myStatus: CharacterStatus;
   myBubble: Bubble;
   habits: HabitBoard;
+  appearance: AppearanceState;
 }
 
 type SyncMessage =
   | { type: 'NOTE_UPDATE'; payload: string }
   | { type: 'TASK_UPDATE'; payload: Task[] }
   | { type: 'HABITS'; payload: HabitBoard }
+  | { type: 'APPEARANCE'; payload: AppearanceState }
   | { type: 'STROKE_ADD'; payload: Stroke }
   | { type: 'WHITEBOARD_CLEAR' }
   | { type: 'LIGHTING'; payload: { isNightMode: boolean; updatedAt: number } }
@@ -178,6 +276,8 @@ export interface AppState {
   myTasks: Task[];
   partnerTasks: Task[];
   habits: HabitBoard;
+  /** Both characters' looks — shared, so each desk shows the same pair. */
+  appearance: AppearanceState;
   /** Shared room code; both desks must match. */
   pairCode: string;
   /** True once a character was picked by hand — unpinned installs auto-claim. */
@@ -204,6 +304,7 @@ export interface AppState {
   setMyNotes: (text: string) => void;
   addTask: (text: string) => void;
   updateTaskStatus: (id: string, status: TaskStatus) => void;
+  setAppearance: (role: Role, patch: Partial<Appearance>) => void;
   addHabit: (name: string) => void;
   renameHabit: (id: string, name: string) => void;
   toggleHabitDay: (id: string, day: number) => void;
@@ -247,6 +348,7 @@ export const useAppStore = create<AppState>()(
       partnerNotes: '',
       myTasks: [],
       habits: { habits: [], updatedAt: 0 },
+      appearance: sanitizeAppearance(undefined),
       pairCode: makePairCode(),
       rolePinned: false,
       partnerTasks: [],
@@ -294,6 +396,20 @@ export const useAppStore = create<AppState>()(
       setMyNotes: (text) => {
         set({ myNotes: text });
         broadcast({ type: 'NOTE_UPDATE', payload: text });
+      },
+
+      /* Appearance is shared like the habit board: republish the whole thing
+         and let the newer timestamp win. Either desk may dress either
+         character — they are building one room together. */
+      setAppearance: (role, patch) => {
+        const cur = get().appearance;
+        set({
+          appearance: {
+            looks: { ...cur.looks, [role]: { ...cur.looks[role], ...patch } },
+            updatedAt: Date.now(),
+          },
+        });
+        broadcast({ type: 'APPEARANCE', payload: get().appearance });
       },
 
       /* Habits are a single shared board: every edit republishes the whole
@@ -496,6 +612,7 @@ export const useAppStore = create<AppState>()(
         myTasks: s.myTasks,
         partnerTasks: s.partnerTasks,
         habits: s.habits,
+        appearance: s.appearance,
         pairCode: s.pairCode,
         rolePinned: s.rolePinned,
         isNightMode: s.isNightMode,
@@ -515,9 +632,11 @@ export const useAppStore = create<AppState>()(
             timer: { ...state.timer, isRunning: false, endsAt: null, remainingMs: remaining },
           });
         }
-        // A board persisted by an older build may predate the habit grid.
+        // A board persisted by an older build may predate the habit grid or
+        // the wardrobe; both sanitizers fill in whatever is missing.
         useAppStore.setState({
           habits: sanitizeHabits(state.habits ?? { habits: [], updatedAt: 0 }),
+          appearance: sanitizeAppearance(state.appearance),
         });
         // Statuses persisted by an older build may no longer exist.
         useAppStore.setState({
@@ -678,6 +797,7 @@ function buildFullSync(): SyncMessage {
       myStatus: s.myStatus,
       myBubble: s.myBubble,
       habits: s.habits,
+      appearance: s.appearance,
     },
   };
 }
@@ -717,6 +837,13 @@ function handleMessage(msg: SyncMessage): void {
       break;
     case 'TASK_UPDATE':
       useAppStore.setState({ partnerTasks: msg.payload });
+      break;
+    case 'APPEARANCE':
+      useAppStore.setState((s) =>
+        msg.payload.updatedAt >= s.appearance.updatedAt
+          ? { appearance: sanitizeAppearance(msg.payload) }
+          : {}
+      );
       break;
     case 'HABITS':
       useAppStore.setState((s) =>
@@ -766,6 +893,9 @@ function handleMessage(msg: SyncMessage): void {
         ...(p.timer.updatedAt > s.timer.updatedAt ? { timer: p.timer } : {}),
         ...((p.habits?.updatedAt ?? 0) > s.habits.updatedAt
           ? { habits: sanitizeHabits(p.habits) }
+          : {}),
+        ...((p.appearance?.updatedAt ?? 0) > s.appearance.updatedAt
+          ? { appearance: sanitizeAppearance(p.appearance) }
           : {}),
       }));
       break;

@@ -191,6 +191,36 @@ no longer a global CLIPS const.
   sphere measured standing. `s.poseSettle` re-measures the skinned bounds for
   2.5s after every status change.
 
+### Wardrobe (appearance is STATE, not constants)
+
+`CUSTOMIZE` is gone. `buildLook(role, appearance)` derives the whole look from
+`appearance.looks[role]` in the store — shared between both desks, last-write-
+wins on `updatedAt`, same shape as the habit board. The laundry basket opens
+the `WARDROBE` panel; either desk can dress either character.
+
+What stays in code is per-MODEL knowledge a user can't pick: which materials
+exist, which hue bands mean what (`isTunic`/`isLeather`/`isBuckle`/`isLining`,
+`isTrim`), and where marks belong on the body. What moved into state: hair
+roots + tips, eyes, outfit, trim, freckles/blush/stubble, pattern, accessories.
+
+- `buildTexelMap()` replaced the old sash-only mask. Every texel now knows its
+  normalised 3D position on the mesh, which is what makes three things
+  possible: height bands (belt, sash), the root-to-tip hair gradient
+  (`Band.toBottom`), and `Stamp`s placed by rules like "front of the face,
+  cheek height, off the nose bridge". Cached per (geometry, size).
+- `Stamp` draws dots or five-petal flowers through the 2D context after the
+  bands, using rejection sampling over that map. Placement is seeded so marks
+  never move between launches.
+- **Glasses** are procedural geometry parented to the HEAD BONE, so animation
+  carries them with no frame loop. Placement converts a model-space target into
+  bone-local space via the BIND-POSE matrices — it must run before the mixer
+  touches the clone. Add accessories the same way; list them in `ACCESSORIES`
+  in the store and the panel picks them up automatically.
+- Preview renderer gotcha: an early version sampled ONE texel per triangle and
+  flat-filled, which smears anything smaller than a face — flowers came out as
+  giant coloured triangles. `scratchpad/texrender.js` interpolates UVs per
+  pixel. Never judge stamps with a flat-shaded preview.
+
 ### Recolouring: how it actually works
 
 Both packs are **FULLBRIGHT**. Every material has `baseColorFactor` pure black,

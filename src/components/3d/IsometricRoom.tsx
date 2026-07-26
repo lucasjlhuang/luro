@@ -838,6 +838,151 @@ function Dumbbell({
   );
 }
 
+/* Strat-style body outline, as cubic beziers in a unit-ish space centred on the
+ * body. Long bass horn, shorter treble horn, deep cutaway between them, pinched
+ * waist and a wide lower bout. Scaled by BODY_SCALE into world units. */
+const GUITAR_OUTLINE: Array<[[number, number], [number, number], [number, number], [number, number]]> = [
+  [[-0.34, 0.74], [-0.52, 0.68], [-0.6, 0.46], [-0.56, 0.22]],
+  [[-0.56, 0.22], [-0.53, 0.06], [-0.4, 0.02], [-0.4, -0.1]],
+  [[-0.4, -0.1], [-0.4, -0.3], [-0.6, -0.36], [-0.58, -0.58]],
+  [[-0.58, -0.58], [-0.55, -0.8], [-0.28, -0.88], [0.0, -0.88]],
+  [[0.0, -0.88], [0.28, -0.88], [0.55, -0.8], [0.58, -0.58]],
+  [[0.58, -0.58], [0.6, -0.36], [0.41, -0.3], [0.41, -0.1]],
+  [[0.41, -0.1], [0.41, 0.06], [0.54, 0.2], [0.46, 0.44]],
+  [[0.46, 0.44], [0.4, 0.58], [0.26, 0.5], [0.16, 0.3]],
+  [[0.16, 0.3], [0.08, 0.14], [-0.04, 0.16], [-0.1, 0.3]],
+  [[-0.1, 0.3], [-0.18, 0.52], [-0.24, 0.68], [-0.34, 0.74]],
+];
+
+function guitarShape(scale: number, shrink = 1, dy = 0): THREE.Shape {
+  const sh = new THREE.Shape();
+  const P = (x: number, y: number): [number, number] => [x * scale * shrink, (y * shrink + dy) * scale];
+  sh.moveTo(...P(-0.34, 0.74));
+  for (const [, c1, c2, p] of GUITAR_OUTLINE) {
+    sh.bezierCurveTo(...P(c1[0], c1[1]), ...P(c2[0], c2[1]), ...P(p[0], p[1]));
+  }
+  sh.closePath();
+  return sh;
+}
+
+/**
+ * Electric guitar propped against the left wall beside the head of the bed.
+ * Two nested groups: the inner one turns it so the face looks into the room
+ * (+x), the outer one tilts it back so the headstock rests on the wall. At LEAN
+ * 0.14 rad over ~1.2 of height the top drifts ~0.17 toward the wall, landing on
+ * the inner face at x -3.195 without clipping through it.
+ */
+function Guitar({
+  position,
+  lean = 0.14,
+}: {
+  position: [number, number, number];
+  lean?: number;
+}) {
+  const RED = '#c42b2b';
+  const CREAM = '#f4f1e8';
+  const MAPLE = '#d9b98a';
+  const ROSEWOOD = '#4a2f22';
+  const CHROME = '#c8ccd2';
+  const BODY_SCALE = 0.28;
+
+  const geo = useMemo(() => {
+    const body = new THREE.ExtrudeGeometry(guitarShape(BODY_SCALE), {
+      depth: 0.042,
+      bevelEnabled: true,
+      bevelThickness: 0.012,
+      bevelSize: 0.012,
+      bevelSegments: 2,
+      curveSegments: 24,
+    });
+    // the pickguard is close enough to a shrunken body outline to read right
+    const guard = new THREE.ExtrudeGeometry(guitarShape(BODY_SCALE, 0.72, 0.06), {
+      depth: 0.008,
+      bevelEnabled: false,
+      curveSegments: 20,
+    });
+    return { body, guard };
+  }, []);
+
+  return (
+    <group position={position} rotation={[0, 0, lean]}>
+      <group rotation={[0, Math.PI / 2, 0]}>
+        {/* body + pickguard, both centred on the body's own origin */}
+        <group position={[0, 0.26, -0.021]}>
+          <mesh geometry={geo.body} castShadow>
+            <meshStandardMaterial color={RED} roughness={0.28} metalness={0.12} />
+          </mesh>
+          <mesh geometry={geo.guard} position={[0, 0, 0.043]}>
+            <meshStandardMaterial color={CREAM} roughness={0.35} />
+          </mesh>
+
+          {/* HSS: humbucker at the bridge, two single coils above it */}
+          <mesh position={[0.01, -0.1, 0.056]} castShadow>
+            <boxGeometry args={[0.115, 0.042, 0.014]} />
+            <meshStandardMaterial color={CREAM} roughness={0.4} />
+          </mesh>
+          {[0.0, 0.07].map((y) => (
+            <mesh key={y} position={[0.01, y, 0.056]} castShadow>
+              <boxGeometry args={[0.1, 0.022, 0.012]} />
+              <meshStandardMaterial color={CREAM} roughness={0.4} />
+            </mesh>
+          ))}
+          {/* chrome tremolo + saddles */}
+          <mesh position={[0.01, -0.175, 0.056]} castShadow>
+            <boxGeometry args={[0.105, 0.03, 0.016]} />
+            <meshStandardMaterial color={CHROME} roughness={0.25} metalness={0.85} />
+          </mesh>
+          {/* control knobs */}
+          {[[-0.055, -0.2], [0.075, -0.14], [0.085, -0.2]].map(([x, y]) => (
+            <mesh key={`${x}-${y}`} position={[x, y, 0.058]} castShadow>
+              <cylinderGeometry args={[0.011, 0.011, 0.014, 10]} />
+              <meshStandardMaterial color={CREAM} roughness={0.35} />
+            </mesh>
+          ))}
+        </group>
+
+        {/* neck: maple with a rosewood board and a few frets */}
+        <mesh position={[0, 0.72, 0]} castShadow>
+          <boxGeometry args={[0.052, 0.6, 0.04]} />
+          <meshStandardMaterial color={MAPLE} {...CLAY} />
+        </mesh>
+        <mesh position={[0, 0.72, 0.023]}>
+          <boxGeometry args={[0.05, 0.6, 0.012]} />
+          <meshStandardMaterial color={ROSEWOOD} {...CLAY} />
+        </mesh>
+        {[0.5, 0.6, 0.7, 0.8, 0.9, 0.98].map((y) => (
+          <mesh key={y} position={[0, y, 0.0295]} raycast={() => null}>
+            <boxGeometry args={[0.05, 0.004, 0.002]} />
+            <meshStandardMaterial color={CHROME} roughness={0.3} metalness={0.8} />
+          </mesh>
+        ))}
+
+        {/* headstock, angled slightly, with six tuners down one side */}
+        <group position={[0, 1.08, 0]} rotation={[0, 0, 0.07]}>
+          <mesh castShadow>
+            <boxGeometry args={[0.072, 0.17, 0.026]} />
+            <meshStandardMaterial color={MAPLE} {...CLAY} />
+          </mesh>
+          {[0.055, 0.02, -0.015, -0.05].map((y) => (
+            <mesh key={y} position={[-0.045, y, 0.004]} castShadow>
+              <boxGeometry args={[0.026, 0.009, 0.016]} />
+              <meshStandardMaterial color={CHROME} roughness={0.25} metalness={0.85} />
+            </mesh>
+          ))}
+        </group>
+
+        {/* strings, running the neck into the bridge */}
+        {[-0.014, 0, 0.014].map((x) => (
+          <mesh key={x} position={[x, 0.63, 0.031]} raycast={() => null}>
+            <boxGeometry args={[0.0025, 1.0, 0.0025]} />
+            <meshStandardMaterial color="#e6e0d2" roughness={0.35} metalness={0.6} />
+          </mesh>
+        ))}
+      </group>
+    </group>
+  );
+}
+
 function Corkboard3D() {
   const setActiveModal = useAppStore((s) => s.setActiveModal);
   const myTasks = useAppStore((s) => s.myTasks);
@@ -1388,8 +1533,11 @@ function ToyCar({
 
 /** Woven laundry basket with clothes peeking out the top. */
 function LaundryBasket({ position }: { position: [number, number, number] }) {
+  const setActiveModal = useAppStore((s) => s.setActiveModal);
   return (
-    <group position={position}>
+    <Interactive position={position} onSelect={() => setActiveModal('WARDROBE')}>
+      {() => (
+        <group>
       <mesh position={[0, 0.38, 0]} castShadow>
         <cylinderGeometry args={[0.42, 0.34, 0.76, 24]} />
         <meshStandardMaterial color={P.creamSoft} {...CLAY} />
@@ -1410,11 +1558,13 @@ function LaundryBasket({ position }: { position: [number, number, number] }) {
         <sphereGeometry args={[0.17, 16, 16]} />
         <meshStandardMaterial color={P.white} {...CLAY} />
       </mesh>
-      <mesh position={[-0.13, 0.78, -0.07]} scale={[1, 0.55, 1]} castShadow>
-        <sphereGeometry args={[0.14, 16, 16]} />
-        <meshStandardMaterial color={P.teal} {...CLAY} />
-      </mesh>
-    </group>
+          <mesh position={[-0.13, 0.78, -0.07]} scale={[1, 0.55, 1]} castShadow>
+            <sphereGeometry args={[0.14, 16, 16]} />
+            <meshStandardMaterial color={P.teal} {...CLAY} />
+          </mesh>
+        </group>
+      )}
+    </Interactive>
   );
 }
 
@@ -1530,6 +1680,8 @@ export default function IsometricRoom() {
         <Bed />
         <LaundryBasket position={[2.65, 0, -2.55]} />
         <Monstera position={[-2.6, 0, -2.5]} rotationY={2.1} scale={0.92} />
+        {/* leaning on the left wall, just past the head of the bed */}
+        <Guitar position={[-3.02, 0.07, -1.15]} />
         <ToyCar position={[-2.55, 0, 2.55]} rotationY={-0.6} />
         {/* habit tracker, on the boards beside the toy car and the bed's foot */}
         <Dumbbell position={[-1.8, 0.07, 2.62]} rotationY={0.35} />

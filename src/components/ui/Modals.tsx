@@ -9,7 +9,14 @@ import {
   useRef,
   useState,
 } from 'react';
-import { HABIT_NAME_MAX, Role, WEEKDAYS, useAppStore } from '../../store/useAppStore';
+import {
+  ACCESSORIES,
+  Appearance,
+  HABIT_NAME_MAX,
+  Role,
+  WEEKDAYS,
+  useAppStore,
+} from '../../store/useAppStore';
 import { renderStrokes } from '../../lib/strokes';
 import { CURSOR, lockCursor, setCursor, unlockCursor } from '../../lib/cursors';
 import { setForceInteractive } from '../../lib/hitTest';
@@ -776,6 +783,164 @@ function HabitsModal() {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Wardrobe: colours, marks and accessories for both characters.       */
+/* Everything is shared, so either desk can dress either character.    */
+/* ------------------------------------------------------------------ */
+
+/** Swatches per slot — quick picks; the colour input covers everything else. */
+const SWATCHES: Record<string, string[]> = {
+  hair: ['#1A120B', '#4A250C', '#7A4014', '#9C5518', '#6E4C34', '#C08A4A', '#E8E0D0'],
+  eyes: ['#6B4A24', '#7D956D', '#50C878', '#3E6FA8', '#8A6B4F', '#4A4A52'],
+  cloth: ['#7D956D', '#5A6B4E', '#A8C8E0', '#C6CACD', '#3E4247', '#EC93B8', '#C42B2B', '#F2F2EE'],
+};
+
+function ColorRow({
+  label,
+  value,
+  swatches,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  swatches: string[];
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1.5 py-[3px]">
+      <span className="w-[62px] shrink-0 text-[10px] text-[#7a6242]">{label}</span>
+      {swatches.map((c) => (
+        <button
+          key={c}
+          onClick={() => onChange(c)}
+          title={c}
+          className="h-[15px] w-[15px] shrink-0 rounded-full border transition"
+          style={{
+            background: c,
+            borderColor: value.toLowerCase() === c.toLowerCase() ? '#6b5b4a' : 'rgba(0,0,0,.18)',
+            boxShadow: value.toLowerCase() === c.toLowerCase() ? '0 0 0 2px #d9a563' : 'none',
+          }}
+        />
+      ))}
+      <input
+        type="color"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        title="Custom colour"
+        className="ml-0.5 h-[16px] w-[22px] shrink-0 cursor-pointer rounded border border-black/15 bg-transparent p-0"
+      />
+    </div>
+  );
+}
+
+function Toggle({
+  label,
+  on,
+  onChange,
+}: {
+  label: string;
+  on: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <button
+      onClick={() => onChange(!on)}
+      className="flex items-center gap-1.5 rounded-md px-1.5 py-[3px] text-[10px] transition"
+      style={{ background: on ? '#d9a563' : 'rgba(0,0,0,.05)', color: on ? '#fff' : '#7a6242' }}
+    >
+      <span
+        className="flex h-[12px] w-[12px] items-center justify-center rounded-[3px] text-[9px] leading-none"
+        style={{ background: on ? '#fff' : 'rgba(0,0,0,.12)', color: '#7a6242' }}
+      >
+        {on ? '✓' : ''}
+      </span>
+      {label}
+    </button>
+  );
+}
+
+function WardrobeModal() {
+  const looks = useAppStore((s) => s.appearance.looks);
+  const setAppearance = useAppStore((s) => s.setAppearance);
+  const myRole = useAppStore((s) => s.role);
+  const [tab, setTab] = useState<Role>(myRole);
+  const a: Appearance = looks[tab];
+  const set = (patch: Partial<Appearance>) => setAppearance(tab, patch);
+
+  return (
+    <DragShell id="wardrobe">
+      <div className="relative rounded-2xl p-3 shadow-xl" style={{ background: WOOD }}>
+        <CloseButton />
+        <div className="w-[352px] rounded-lg p-3 shadow-inner" style={{ background: CREAM_SOFT }}>
+          {/* whose wardrobe */}
+          <div className="mb-2 flex gap-1.5">
+            {(['USER_A', 'USER_B'] as const).map((r) => (
+              <button
+                key={r}
+                onClick={() => setTab(r)}
+                className="rounded-md px-2.5 py-1 text-[11px] font-semibold transition"
+                style={{
+                  background: tab === r ? ORANGE : 'rgba(0,0,0,.06)',
+                  color: tab === r ? '#fff' : '#7a6242',
+                }}
+              >
+                {r === 'USER_A' ? 'Lulu' : 'Roro'}
+              </button>
+            ))}
+          </div>
+
+          <ColorRow label="Hair roots" value={a.hairTop} swatches={SWATCHES.hair} onChange={(v) => set({ hairTop: v })} />
+          <ColorRow label="Hair tips" value={a.hairBottom} swatches={SWATCHES.hair} onChange={(v) => set({ hairBottom: v })} />
+          <ColorRow label="Eyes" value={a.eyes} swatches={SWATCHES.eyes} onChange={(v) => set({ eyes: v })} />
+          <ColorRow label="Outfit" value={a.outfit} swatches={SWATCHES.cloth} onChange={(v) => set({ outfit: v })} />
+          <ColorRow label="Trim" value={a.trim} swatches={SWATCHES.cloth} onChange={(v) => set({ trim: v })} />
+
+          <div className="mt-2 border-t border-[#dccda9] pt-2">
+            <div className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-[#a8977a]">
+              Face
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <Toggle label="Freckles" on={a.freckles} onChange={(v) => set({ freckles: v })} />
+              <Toggle label="Blush" on={a.blush} onChange={(v) => set({ blush: v })} />
+              <Toggle label="Stubble" on={a.stubble} onChange={(v) => set({ stubble: v })} />
+            </div>
+          </div>
+
+          <div className="mt-2 border-t border-[#dccda9] pt-2">
+            <div className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-[#a8977a]">
+              Accessories
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {ACCESSORIES.map(({ key, label }) => (
+                <Toggle
+                  key={key}
+                  label={label}
+                  on={a.accessories[key]}
+                  onChange={(v) => set({ accessories: { ...a.accessories, [key]: v } })}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-2 border-t border-[#dccda9] pt-2">
+            <div className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-[#a8977a]">
+              Pattern
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <Toggle label="Plain" on={a.pattern === 'none'} onChange={() => set({ pattern: 'none' })} />
+              <Toggle
+                label="Flowers"
+                on={a.pattern === 'flowers'}
+                onChange={() => set({ pattern: 'flowers' })}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </DragShell>
+  );
+}
+
 export function ModalLayer() {
   const activeModal = useAppStore((s) => s.activeModal);
   const setActiveModal = useAppStore((s) => s.setActiveModal);
@@ -797,6 +962,7 @@ export function ModalLayer() {
       {activeModal === 'WHITEBOARD' && <WhiteboardModal />}
       {activeModal === 'TIMER' && <TimerModal />}
       {activeModal === 'HABITS' && <HabitsModal />}
+      {activeModal === 'WARDROBE' && <WardrobeModal />}
       {/* SPEECH renders in-scene as an editable bubble over the character */}
     </div>
   );

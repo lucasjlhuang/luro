@@ -3,7 +3,15 @@ import * as THREE from 'three';
 import { ThreeEvent, useFrame } from '@react-three/fiber';
 import { Html, useAnimations, useGLTF } from '@react-three/drei';
 import { SkeletonUtils } from 'three-stdlib';
-import { CharacterStatus, CharPos, Role, partnerOf, useAppStore } from '../../store/useAppStore';
+import {
+  AccessoryKey,
+  Appearance,
+  CharacterStatus,
+  CharPos,
+  Role,
+  partnerOf,
+  useAppStore,
+} from '../../store/useAppStore';
 import { setForceInteractive } from '../../lib/hitTest';
 import { CURSOR, lockCursor, setCursor, unlockCursor } from '../../lib/cursors';
 import roroUrl from '../../assets/models/roro.glb?url';
@@ -109,7 +117,7 @@ useGLTF.preload(luluUrl);
  * for everything the earlier bands left over.
  */
 type Band = {
-  match?: (hue: number, sat: number) => boolean;
+  match?: (hue: number, sat: number, lum: number) => boolean;
   /**
    * Restrict the band to texels used by triangles sitting within this slice of
    * the mesh's own height (0 = its lowest vertex, 1 = its highest). Needed when
@@ -125,7 +133,30 @@ type Band = {
    * When set, `to` is ignored.
    */
   mergeInto?: number;
+  /**
+   * Second colour blended in toward the BOTTOM of the mesh, giving a
+   * root-to-tip gradient. `to` is the colour at the top.
+   */
+  toBottom?: string;
   to: string;
+};
+
+/**
+ * Marks stamped onto a texture after the bands are painted — freckles, a
+ * printed pattern. Placement is by 3D position on the mesh, not by UV, so a
+ * rule reads as "on the cheeks" rather than "somewhere in this atlas corner".
+ */
+type Stamp = {
+  kind: 'dot' | 'flower';
+  color: string;
+  /** Attempts; some are rejected by `where`, so the visible count is lower. */
+  count: number;
+  /** Radius in texels. */
+  size: number;
+  opacity?: number;
+  /** Seed so a given character's marks never move between launches. */
+  seed?: number;
+  where: (p: { x: number; y: number; z: number }) => boolean;
 };
 
 /* The dress, skirt and trims all share ONE material and ONE atlas, so they can
@@ -145,6 +176,22 @@ const isTrim = (h: number, s: number) => isTrimGold(h, s) || isTrimBlue(h, s);
  * would punch a hole through the dress — so it is "removed" by painting it the
  * dress colour. */
 const SASH_BAND: [number, number] = [0.5, 0.72];
+
+/* Lulu's tunic, belt, buckle and trousers all share ONE material and atlas too.
+ * The teal is not a shirt but a full tunic reaching mid-thigh; the trousers are
+ * only the short sections below its hem. Belt and trousers are BOTH brown, so
+ * height separates them exactly as it does Roro's sash — measured from the bind
+ * pose the belt sits at 37-55% of the mesh, the trousers below it. The buckle
+ * shares the belt's hue family and is told apart by LIGHTNESS, which is why
+ * `match` takes lum as well. */
+const BELT_BAND: [number, number] = [0.37, 0.55];
+const isTunic = (h: number, s: number) => h >= 170 && h <= 230 && s >= 0.15;
+const isLeather = (h: number, s: number) => h >= 8 && h <= 35 && s >= 0.06;
+const isBuckle = (h: number, s: number, l: number) =>
+  h >= 35 && h <= 60 && s >= 0.3 && l <= 0.8;
+/** The collar and hem lining: same hue family as the buckle but much lighter. */
+const isLining = (h: number, _s: number, l: number) => h >= 30 && h <= 65 && l > 0.8;
+
 
 /**
  * Day/night response. These models are FULLBRIGHT — they render straight out of
@@ -168,36 +215,182 @@ const isSkinMaterial = (name: string) => /skin_(body|face|nose|brow)/i.test(name
  * and how to repaint the rest. Materials are cloned per instance so the two
  * roles can differ despite sharing one GLB.
  */
-const CUSTOMIZE: Record<Role, { hide: string[]; gear: string[]; paint: Record<string, Band[]> }> = {
-  // `hide` is permanent (the hood covers the real hair mesh underneath).
-  // `gear` = worn only on the job: hidden while idling, roaming, carried or in
-  // bed, shown while WORKING. Both are excluded from the height fit, so gear
-  // can never change how big the character is.
-  USER_A: {
-    hide: ['outfit_hat', 'outfit_cloak'], // no hat, no cape — not even at work
-    gear: ['weapon'], // staff only
+interface Look {
+  hide: string[];
+  gear: string[];
+  paint: Record<string, Band[]>;
+  stamp?: Record<string, Stamp[]>;
+  accessories: Record<AccessoryKey, boolean>;
+}
+
+/**
+ * The look is built from live state now, not a constant, so the wardrobe panel
+ * can drive it. Everything that used to be hard-coded here is a field on
+ * `Appearance`; what stays is the knowledge of HOW each pack is put together —
+ * which materials exist, which hue bands mean what, where on the body the marks
+ * belong. That part is per-model and not something a user picks.
+ */
+function buildLook(role: Role, a: Appearance): Look {
+  const faceStamps: Stamp[] = [];
+  if (a.freckles) {
+    faceStamps.push({
+      kind: 'dot',
+      color: '#8a5533',
+      count: 24,
+      size: 1.9,
+      opacity: 0.42,
+      seed: 11,
+      where: (p) => p.z < 0.3 && p.y > 0.2 && p.y < 0.38 && Math.abs(p.x - 0.5) < 0.27,
+    });
+  }
+  if (a.blush) {
+    faceStamps.push({
+      kind: 'dot',
+      color: '#D9455F',
+      count: 34,
+      size: 5.6,
+      opacity: 0.26,
+      seed: 3,
+      where: (p) =>
+        p.z < 0.28 &&
+        p.y > 0.17 &&
+        p.y < 0.31 &&
+        Math.abs(p.x - 0.5) > 0.09 &&
+        Math.abs(p.x - 0.5) < 0.27,
+    });
+  }
+  if (a.stubble) {
+    // Jaw, chin and upper lip: many tiny, very faint dots read as shadow
+    // rather than dirt. Sits below the freckle band and wraps further round.
+    faceStamps.push({
+      kind: 'dot',
+      color: '#3b2b22',
+      count: 150,
+      size: 1.15,
+      opacity: 0.2,
+      seed: 27,
+      where: (p) => p.z < 0.42 && p.y > 0.03 && p.y < 0.19 && Math.abs(p.x - 0.5) < 0.34,
+    });
+  }
+
+  const gear = a.accessories.staff ? ['weapon'] : [];
+  const hide = [
+    ...(a.accessories.hat ? [] : ['outfit_hat']),
+    ...(role === 'USER_A' && !a.accessories.cape ? ['outfit_cloak'] : []),
+    ...(a.accessories.staff ? [] : ['weapon']),
+  ];
+
+  if (role === 'USER_A') {
+    return {
+      hide,
+      gear,
+      accessories: a.accessories,
+      paint: {
+        skin_hair: [{ to: a.hairTop, toBottom: a.hairBottom }],
+        skin_eyes: [{ match: (_h, s2) => s2 >= 0.25, to: a.eyes }],
+        outfit_body: [
+          { match: isBuckle, to: '#C8CBD0' }, // buckle -> silver
+          { match: isLeather, bodyBand: BELT_BAND, to: '#6B4423' }, // belt
+          { match: isLeather, to: '#141414' }, // trousers
+          { match: isLining, to: a.trim }, // collar + hem lining
+          { match: isTunic, to: a.outfit }, // tunic
+        ],
+        outfit_boots: [{ to: '#141414' }], // shoes
+      },
+      stamp: faceStamps.length ? { skin_face: faceStamps } : undefined,
+    };
+  }
+
+  const dress: Band[] = [
+    // the sash, dissolved into the dress so it stops reading as a band
+    { match: isTrim, bodyBand: SASH_BAND, mergeInto: 2, to: a.outfit },
+    { match: isTrim, to: a.trim }, // hem trim
+    { to: a.outfit }, // dress + skirt
+  ];
+  const stamp: Record<string, Stamp[]> = {};
+  if (faceStamps.length) stamp.skin_face = faceStamps;
+  if (a.pattern === 'flowers') {
+    stamp.outfit_body = [
+      {
+        kind: 'flower',
+        color: '#EC93B8',
+        count: 78,
+        size: 4.6,
+        opacity: 0.95,
+        seed: 5,
+        where: (p) => p.y > 0.12 && p.y < 0.88,
+      },
+    ];
+  }
+  return {
+    hide,
+    gear,
+    accessories: a.accessories,
     paint: {
-      skin_hair: [{ to: '#1A120B' }], // dark brown, near black
-      skin_eyes: [{ match: (_h, s) => s >= 0.25, to: '#A8763E' }], // hazel brown
+      skin_hair: [{ to: a.hairTop, toBottom: a.hairBottom }],
+      outfit_body: dress,
+      outfit_boots: [{ to: '#000000' }],
+      skin_eyes: [{ match: (_h, s2) => s2 >= 0.25, to: a.eyes }],
     },
-  },
-  USER_B: {
-    hide: ['outfit_hat'],
-    gear: ['weapon'], // no cape mesh in this pack
-    paint: {
-      skin_hair: [{ to: '#893718' }], // light brown
-      outfit_body: [
-        // the sash: dissolved into the dress (band 2) so it vanishes
-        { match: isTrim, bodyBand: SASH_BAND, mergeInto: 2, to: '#00A86B' },
-        { match: isTrim, to: '#98FB98' }, // remaining trims (the hem)
-        { to: '#00A86B' }, // dress + skirt
-      ],
-      outfit_boots: [{ to: '#000000' }], // shoes
-      // leave the white catchlights alone, recolour only the glowing iris
-      skin_eyes: [{ match: (_h, s) => s >= 0.25, to: '#50C878' }], // emerald
-    },
-  },
-};
+    stamp: Object.keys(stamp).length ? stamp : undefined,
+  };
+}
+
+/* ---------------------------- accessories ---------------------------- */
+
+/**
+ * Rectangular wire glasses, built procedurally and parented to the HEAD BONE so
+ * they follow every animation for free — no per-frame bookkeeping.
+ *
+ * Sizes come from the eyes mesh (x +/-0.195, y 0.571..0.813, front face at
+ * z -0.254), all in the model's own space. Placement converts that target into
+ * the bone's local space using the bind-pose matrices, which is why this must
+ * run before the mixer has touched anything.
+ */
+function buildGlasses(): THREE.Group {
+  const g = new THREE.Group();
+  const frame = new THREE.MeshStandardMaterial({
+    color: '#141414',
+    roughness: 0.35,
+    metalness: 0.45,
+  });
+
+  const LENS_W = 0.145;
+  const LENS_H = 0.085;
+  const BAR = 0.011; // frames are skinny
+
+  const lens = (cx: number) => {
+    // four thin bars per lens: a rectangle, not a ring
+    const parts: Array<[number, number, number, number]> = [
+      [cx, LENS_H / 2, LENS_W, BAR],
+      [cx, -LENS_H / 2, LENS_W, BAR],
+      [cx - LENS_W / 2, 0, BAR, LENS_H + BAR],
+      [cx + LENS_W / 2, 0, BAR, LENS_H + BAR],
+    ];
+    for (const [x, y, w, h] of parts) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, BAR), frame);
+      m.position.set(x, y, 0);
+      m.castShadow = true;
+      g.add(m);
+    }
+  };
+  lens(-LENS_W / 2 - 0.016);
+  lens(LENS_W / 2 + 0.016);
+
+  // bridge
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.032, BAR, BAR), frame);
+  g.add(bridge);
+
+  // temples, angled back toward the ears
+  for (const side of [-1, 1]) {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(BAR, BAR, 0.17), frame);
+    arm.position.set(side * (LENS_W + 0.024), 0.012, 0.085);
+    arm.rotation.y = side * 0.12;
+    arm.castShadow = true;
+    g.add(arm);
+  }
+  return g;
+}
 
 /* ------------------------- texture repainting ------------------------- */
 
@@ -251,73 +444,121 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
  * own height, in bind pose. Rasterised straight into UV space at the texture's
  * resolution; edges are grown by a texel so seams don't leak the old colour.
  */
-function buildBodyBandMask(
-  geom: THREE.BufferGeometry,
-  w: number,
-  h: number,
-  lo: number,
-  hi: number
-): Uint8Array | null {
+/**
+ * Where each texel sits ON THE BODY, in the mesh's own normalised bounds.
+ *
+ * This started life as a yes/no mask for the sash, but the same rasterisation
+ * gives position for free, and position is what everything else needs: a height
+ * band to isolate a belt, a vertical fraction to run a root-to-tip gradient, a
+ * 3D predicate to decide where freckles may land. Built once per (geometry,
+ * size) and cached, since three features now ask for it.
+ *
+ * `used` marks texels any triangle covers; x/y/z are 0..1 across the bbox.
+ */
+interface TexelMap {
+  used: Uint8Array;
+  x: Float32Array;
+  y: Float32Array;
+  z: Float32Array;
+}
+
+const texelMapCache = new WeakMap<THREE.BufferGeometry, Map<string, TexelMap | null>>();
+
+function buildTexelMap(geom: THREE.BufferGeometry, w: number, h: number): TexelMap | null {
+  const key = `${w}x${h}`;
+  let per = texelMapCache.get(geom);
+  if (per?.has(key)) return per.get(key) ?? null;
+
+  let result: TexelMap | null = null;
   const pos = geom.getAttribute('position');
   const uv = geom.getAttribute('uv');
-  if (!pos || !uv) return null;
-  const index = geom.getIndex();
-  const triCount = (index ? index.count : pos.count) / 3;
-
-  let yMin = Infinity;
-  let yMax = -Infinity;
-  for (let i = 0; i < pos.count; i += 1) {
-    const y = pos.getY(i);
-    if (y < yMin) yMin = y;
-    if (y > yMax) yMax = y;
-  }
-  const span = yMax - yMin;
-  if (!(span > 0)) return null;
-
-  const mask = new Uint8Array(w * h);
-  const ux = [0, 0, 0];
-  const uy = [0, 0, 0];
-  for (let t = 0; t < triCount; t += 1) {
-    let cy = 0;
-    for (let c = 0; c < 3; c += 1) {
-      const vi = index ? index.getX(t * 3 + c) : t * 3 + c;
-      cy += pos.getY(vi);
-      ux[c] = uv.getX(vi) * (w - 1);
-      uy[c] = uv.getY(vi) * (h - 1);
-    }
-    const frac = (cy / 3 - yMin) / span;
-    if (frac < lo || frac > hi) continue;
-
-    // grow the triangle's box by one texel to cover the UV seam
-    const x0 = Math.max(0, Math.floor(Math.min(ux[0], ux[1], ux[2])) - 1);
-    const x1 = Math.min(w - 1, Math.ceil(Math.max(ux[0], ux[1], ux[2])) + 1);
-    const y0 = Math.max(0, Math.floor(Math.min(uy[0], uy[1], uy[2])) - 1);
-    const y1 = Math.min(h - 1, Math.ceil(Math.max(uy[0], uy[1], uy[2])) + 1);
-    const area = (ux[1] - ux[0]) * (uy[2] - uy[0]) - (ux[2] - ux[0]) * (uy[1] - uy[0]);
-    if (!area) continue;
-    for (let y = y0; y <= y1; y += 1) {
-      for (let x = x0; x <= x1; x += 1) {
-        const w0 = ((ux[1] - x) * (uy[2] - y) - (ux[2] - x) * (uy[1] - y)) / area;
-        const w1 = ((ux[2] - x) * (uy[0] - y) - (ux[0] - x) * (uy[2] - y)) / area;
-        const w2 = 1 - w0 - w1;
-        if (w0 < -0.02 || w1 < -0.02 || w2 < -0.02) continue;
-        mask[y * w + x] = 1;
+  if (pos && uv) {
+    const index = geom.getIndex();
+    const triCount = (index ? index.count : pos.count) / 3;
+    const lo = [Infinity, Infinity, Infinity];
+    const hi = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < pos.count; i += 1) {
+      const v = [pos.getX(i), pos.getY(i), pos.getZ(i)];
+      for (let c = 0; c < 3; c += 1) {
+        if (v[c] < lo[c]) lo[c] = v[c];
+        if (v[c] > hi[c]) hi[c] = v[c];
       }
     }
+    const span = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]].map((d) => (d > 0 ? d : 1));
+
+    const map: TexelMap = {
+      used: new Uint8Array(w * h),
+      x: new Float32Array(w * h),
+      y: new Float32Array(w * h),
+      z: new Float32Array(w * h),
+    };
+    const ux = [0, 0, 0];
+    const uy = [0, 0, 0];
+    for (let t = 0; t < triCount; t += 1) {
+      let cx = 0;
+      let cy = 0;
+      let cz = 0;
+      for (let c = 0; c < 3; c += 1) {
+        const vi = index ? index.getX(t * 3 + c) : t * 3 + c;
+        cx += pos.getX(vi);
+        cy += pos.getY(vi);
+        cz += pos.getZ(vi);
+        ux[c] = uv.getX(vi) * (w - 1);
+        uy[c] = uv.getY(vi) * (h - 1);
+      }
+      const nx = (cx / 3 - lo[0]) / span[0];
+      const ny = (cy / 3 - lo[1]) / span[1];
+      const nz = (cz / 3 - lo[2]) / span[2];
+
+      // grow the triangle's box by one texel to cover the UV seam
+      const x0 = Math.max(0, Math.floor(Math.min(ux[0], ux[1], ux[2])) - 1);
+      const x1 = Math.min(w - 1, Math.ceil(Math.max(ux[0], ux[1], ux[2])) + 1);
+      const y0 = Math.max(0, Math.floor(Math.min(uy[0], uy[1], uy[2])) - 1);
+      const y1 = Math.min(h - 1, Math.ceil(Math.max(uy[0], uy[1], uy[2])) + 1);
+      const area = (ux[1] - ux[0]) * (uy[2] - uy[0]) - (ux[2] - ux[0]) * (uy[1] - uy[0]);
+      if (!area) continue;
+      for (let y = y0; y <= y1; y += 1) {
+        for (let x = x0; x <= x1; x += 1) {
+          const w0 = ((ux[1] - x) * (uy[2] - y) - (ux[2] - x) * (uy[1] - y)) / area;
+          const w1 = ((ux[2] - x) * (uy[0] - y) - (ux[0] - x) * (uy[2] - y)) / area;
+          const w2 = 1 - w0 - w1;
+          if (w0 < -0.02 || w1 < -0.02 || w2 < -0.02) continue;
+          const p = y * w + x;
+          map.used[p] = 1;
+          map.x[p] = nx;
+          map.y[p] = ny;
+          map.z[p] = nz;
+        }
+      }
+    }
+    result = map;
   }
-  return mask;
+
+  if (!per) {
+    per = new Map();
+    texelMapCache.set(geom, per);
+  }
+  per.set(key, result);
+  return result;
+}
+
+/** Deterministic 0..1 from an integer — stamp placement must not flicker. */
+function hashRand(n: number): number {
+  const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
 }
 
 /** Source texture -> a recoloured copy. Cached per (texture, band set). */
 function repaintTexture(
   tex: THREE.Texture,
   bands: Band[],
-  geom?: THREE.BufferGeometry
+  geom?: THREE.BufferGeometry,
+  stamps?: Stamp[]
 ): THREE.Texture | null {
   // Bands can share a colour, so the key notes matchers and height slices too.
-  const key = bands
-    .map((b) => (b.match ? 'm' : '*') + (b.bodyBand?.join(':') ?? '') + b.to)
-    .join('|');
+  const key =
+    bands.map((b) => (b.match ? 'm' : '*') + (b.bodyBand?.join(':') ?? '') + b.to + (b.toBottom ?? '')).join('|') +
+    (stamps?.map((st) => `${st.kind}${st.color}${st.count}${st.size}`).join('|') ?? '');
   let perTex = repaintCache.get(tex);
   if (perTex?.has(key)) return perTex.get(key) ?? null;
 
@@ -336,13 +577,15 @@ function repaintTexture(
         const image = ctx.getImageData(0, 0, w, h);
         const { data } = image;
 
-        const masks = bands.map((b) =>
-          b.bodyBand && geom ? buildBodyBandMask(geom, w, h, b.bodyBand[0], b.bodyBand[1]) : null
-        );
-        const bandAt = (p: number, hue: number, sat: number) =>
+        const tmap = geom ? buildTexelMap(geom, w, h) : null;
+        const inBand = (b: Band, p: number) => {
+          if (!b.bodyBand) return true;
+          if (!tmap || !tmap.used[p]) return false;
+          return tmap.y[p] >= b.bodyBand[0] && tmap.y[p] <= b.bodyBand[1];
+        };
+        const bandAt = (p: number, hue: number, sat: number, lum: number) =>
           bands.findIndex(
-            (band, bi) =>
-              (!band.match || band.match(hue, sat)) && (!masks[bi] || masks[bi]![p] === 1)
+            (band) => (!band.match || band.match(hue, sat, lum)) && inBand(band, p)
           );
 
         // pass 1: which band each texel belongs to, and each band's L stats
@@ -356,7 +599,7 @@ function repaintTexture(
           // skip the unused UV gutter: transparent or near-black
           if (data[i + 3] < 8 || data[i] + data[i + 1] + data[i + 2] < 12) continue;
           const [hue, sat, lum] = rgbToHsl(data[i], data[i + 1], data[i + 2]);
-          const b = bandAt(p, hue, sat);
+          const b = bandAt(p, hue, sat, lum);
           if (b < 0) continue;
           bandOf[p] = b;
           sumL[b] += lum;
@@ -369,10 +612,12 @@ function repaintTexture(
         // Parse the hex straight to sRGB bytes — the texels are in that same
         // space, and going via THREE.Color would depend on whether colour
         // management happens to be enabled.
-        const target = bands.map((b) => {
-          const n = parseInt(b.to.slice(1), 16);
+        const asHsl = (hex: string): [number, number, number] => {
+          const n = parseInt(hex.slice(1), 16);
           return rgbToHsl((n >> 16) & 255, (n >> 8) & 255, n & 255);
-        });
+        };
+        const target = bands.map((b) => asHsl(b.to));
+        const bottom = bands.map((b) => (b.toBottom ? asHsl(b.toBottom) : null));
 
         /* Shading is carried across as an offset from the band's mean. Where
          * that offset would run past black or white, squeeze it to fit instead
@@ -410,6 +655,20 @@ function repaintTexture(
             [tH, tS] = target[into];
             const hostFit = (fit[into].up + fit[into].down) / 2;
             newL = target[into][2] + d * (stdev[into] / stdev[b]) * hostFit;
+          } else if (bottom[b] && tmap && tmap.used[p]) {
+            // root-to-tip gradient: `to` at the top of the mesh, `toBottom` at
+            // the bottom, blended by where this texel actually sits on it
+            const k = 1 - tmap.y[p];
+            const [aH, aS, aL] = target[b];
+            const [bH, bS, bL] = bottom[b]!;
+            // shortest way round the wheel, so a red->orange blend cannot
+            // detour through green
+            let dh = bH - aH;
+            if (dh > 180) dh -= 360;
+            if (dh < -180) dh += 360;
+            tH = aH + dh * k;
+            tS = aS + (bS - aS) * k;
+            newL = aL + (bL - aL) * k + d * (d > 0 ? fit[b].up : fit[b].down);
           } else {
             [tH, tS] = target[b];
             newL = target[b][2] + d * (d > 0 ? fit[b].up : fit[b].down);
@@ -420,6 +679,51 @@ function repaintTexture(
           data[i + 2] = nb;
         }
         ctx.putImageData(image, 0, 0);
+
+        /* Stamps go on afterwards, through the 2D context rather than the
+         * pixel buffer, so they get antialiased edges for free. Placement is
+         * rejection sampling over the texel map: pick a texel, ask `where`
+         * whether that spot on the BODY qualifies, keep it if so. */
+        if (stamps?.length && tmap) {
+          for (const st of stamps) {
+            ctx.save();
+            ctx.globalAlpha = st.opacity ?? 1;
+            ctx.fillStyle = st.color;
+            const seed = st.seed ?? 1;
+            let placed = 0;
+            for (let i = 0; i < st.count * 40 && placed < st.count; i += 1) {
+              const px = Math.floor(hashRand(seed * 7919 + i * 2) * w);
+              const py = Math.floor(hashRand(seed * 104729 + i * 3) * h);
+              const p = py * w + px;
+              if (!tmap.used[p]) continue;
+              if (!st.where({ x: tmap.x[p], y: tmap.y[p], z: tmap.z[p] })) continue;
+              placed += 1;
+              const r = st.size * (0.7 + hashRand(seed + i * 5) * 0.6);
+              if (st.kind === 'dot') {
+                ctx.beginPath();
+                ctx.arc(px, py, r, 0, Math.PI * 2);
+                ctx.fill();
+              } else {
+                // five petals plus a centre
+                const rot = hashRand(seed + i * 11) * Math.PI * 2;
+                for (let k = 0; k < 5; k += 1) {
+                  const a = rot + (k / 5) * Math.PI * 2;
+                  ctx.beginPath();
+                  ctx.arc(px + Math.cos(a) * r, py + Math.sin(a) * r, r * 0.62, 0, Math.PI * 2);
+                  ctx.fill();
+                }
+                ctx.save();
+                ctx.globalAlpha = (st.opacity ?? 1) * 0.9;
+                ctx.fillStyle = '#ffe9a8';
+                ctx.beginPath();
+                ctx.arc(px, py, r * 0.42, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+              }
+            }
+            ctx.restore();
+          }
+        }
 
         const out = new THREE.CanvasTexture(canvas);
         // GLTF textures are not flipped and carry their own wrapping/space
@@ -445,13 +749,18 @@ function repaintTexture(
 }
 
 /** Repaint a material's emissive map, or flat-tint it if the map is unreadable. */
-function paintMaterial(mat: THREE.Material, bands: Band[], geom?: THREE.BufferGeometry): void {
+function paintMaterial(
+  mat: THREE.Material,
+  bands: Band[],
+  geom?: THREE.BufferGeometry,
+  stamps?: Stamp[]
+): void {
   const m = mat as THREE.Material & {
     color?: THREE.Color;
     emissive?: THREE.Color;
     emissiveMap?: THREE.Texture | null;
   };
-  const repainted = m.emissiveMap ? repaintTexture(m.emissiveMap, bands, geom) : null;
+  const repainted = m.emissiveMap ? repaintTexture(m.emissiveMap, bands, geom, stamps) : null;
   if (repainted) {
     m.emissiveMap = repainted;
     return;
@@ -682,6 +991,7 @@ const OBSTACLES = [
   { minX: 2.2, maxX: 3.1, minZ: -3.0, maxZ: -2.1 }, // laundry basket
   { minX: -2.93, maxX: -2.17, minZ: 2.17, maxZ: 2.93 }, // toy car
   { minX: -2.11, maxX: -1.49, minZ: 2.47, maxZ: 2.77 }, // dumbbell
+  { minX: -3.2, maxX: -2.85, minZ: -1.35, maxZ: -0.95 }, // guitar against the wall
 ];
 
 function blocked(x: number, z: number): boolean {
@@ -870,6 +1180,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
   // The model follows the *role*, not who is looking.
   const role = useAppStore((s) => (variant === 'me' ? s.role : partnerOf(s.role)));
   const model = MODELS[role];
+  const appearance = useAppStore((st) => st.appearance.looks[role]);
 
   const isNight = useAppStore((st) => st.isNightMode);
   // The editable speech bubble replaces the old speech menu.
@@ -899,7 +1210,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
   const { actions, mixer } = useAnimations(animations, scene);
 
   const fitted = useMemo(() => {
-    const custom = CUSTOMIZE[role];
+    const custom = buildLook(role, appearance);
     const matches = (name: string, key: string) =>
       name.toLowerCase().includes(key.toLowerCase());
     const namesOf = (obj: THREE.Mesh) => {
@@ -945,15 +1256,21 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
       const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
       // Loose name match, then repaint the emissive atlas (see paintMaterial —
       // this pack is emissive-only, and one atlas covers dress + sash + trim).
-      const paintOne = (mat: THREE.Material): THREE.Material => {
-        for (const [key, bands] of Object.entries(custom.paint)) {
-          if (matches(mat.name, key) || matches(obj.name, key)) {
-            const clone = mat.clone();
-            paintMaterial(clone, bands, obj.geometry);
-            return clone;
-          }
+      const lookup = <T,>(table: Record<string, T> | undefined, mat: THREE.Material) => {
+        for (const [key, value] of Object.entries(table ?? {})) {
+          if (matches(mat.name, key) || matches(obj.name, key)) return value;
         }
-        return mat;
+        return undefined;
+      };
+      const paintOne = (mat: THREE.Material): THREE.Material => {
+        const bands = lookup(custom.paint, mat);
+        const stamps = lookup(custom.stamp, mat);
+        // A material may have only stamps — Lulu's face is freckles and
+        // nothing else — so an empty band list is a valid case, not a skip.
+        if (!bands && !stamps) return mat;
+        const clone = mat.clone();
+        paintMaterial(clone, bands ?? [], obj.geometry, stamps);
+        return clone;
       };
       obj.material = Array.isArray(obj.material) ? mats.map(paintOne) : paintOne(mats[0]);
       const applied = Array.isArray(obj.material) ? obj.material : [obj.material];
@@ -990,6 +1307,24 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
       if (obj instanceof THREE.SkinnedMesh) skinned.push(obj);
     });
 
+    /* Glasses ride on the head bone. The target sits in MODEL space (just in
+     * front of the eyes), so convert it into the bone's local space using the
+     * bind-pose matrices — valid here because nothing has animated the clone
+     * yet. Parenting means the animation carries them; no frame loop needed. */
+    if (head && custom.accessories?.glasses) {
+      const bone = head as THREE.Object3D;
+      scene.updateMatrixWorld(true);
+      const glasses = buildGlasses();
+      const target = new THREE.Vector3(0, 0.7, -0.262); // eyes centre, a hair proud
+      bone.worldToLocal(target);
+      glasses.position.copy(target);
+      // undo the bone's own bind rotation so the frames face straight forward
+      const q = new THREE.Quaternion();
+      bone.getWorldQuaternion(q);
+      glasses.quaternion.copy(q.invert());
+      bone.add(glasses);
+    }
+
     return {
       scale,
       offset: [-center.x, -box.min.y, -center.z] as const,
@@ -998,7 +1333,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
       skinned,
       lit,
     };
-  }, [scene, srcScene, role]);
+  }, [scene, srcScene, role, appearance]);
 
   /** Flourish pool, derived from whatever clips this model actually ships. */
   const flourishes = useMemo(() => flourishesFrom(animations, model), [animations, model]);
