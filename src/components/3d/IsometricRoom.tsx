@@ -593,16 +593,29 @@ function seeded(id: string, salt: number): number {
   return (h >>> 0) / 4294967296;
 }
 
+/* ------------------------------------------------------------------ */
+/* Flags pinned to the corkboard                                      */
+/* ------------------------------------------------------------------ */
+
+/** Brass push pin, sized to whatever flag it holds up. */
+function FlagPin({ width, height }: { width: number; height: number }) {
+  return (
+    <mesh position={[0, height / 2 - height * 0.1, width * 0.04]} castShadow>
+      <sphereGeometry args={[width * 0.089, 12, 12]} />
+      <meshStandardMaterial color="#d8c058" {...CLAY} />
+    </mesh>
+  );
+}
+
 /**
- * Small tricolour pinned to the corkboard. Three equal vertical bands (the flag
- * has been equal thirds since 1853) at the 3:2 ratio, with a slight tilt so it
- * reads as pinned on by hand. Hung so its top overlaps the board's bottom edge
- * and the rest falls free below.
+ * Tricolour: three equal vertical bands (the flag has been equal thirds since
+ * 1853) at the 3:2 ratio. Hung so its top overlaps the board's bottom edge and
+ * the rest falls free, with a slight tilt so it reads as pinned on by hand.
  */
 function FrenchFlag({
   position,
   rotation = 0,
-  width = 0.2,
+  width = 0.36,
 }: {
   position: [number, number, number];
   rotation?: number;
@@ -623,11 +636,86 @@ function FrenchFlag({
           <meshStandardMaterial color={color} {...CLAY} />
         </mesh>
       ))}
-      {/* push pin through the top edge, scaled with the flag */}
-      <mesh position={[0, height / 2 - height * 0.1, width * 0.04]} castShadow>
-        <sphereGeometry args={[width * 0.089, 12, 12]} />
-        <meshStandardMaterial color="#d8c058" {...CLAY} />
+      <FlagPin width={width} height={height} />
+    </group>
+  );
+}
+
+/**
+ * Right half of the 11-point maple leaf, top tip down to the stem, in a unit
+ * box; the left half is this mirrored. Alternating outward points and inward
+ * notches — five points a side plus the central tip make the canonical eleven.
+ */
+const MAPLE_HALF: Array<[number, number]> = [
+  [0.0, 0.5],
+  [0.07, 0.3],
+  [0.18, 0.335],
+  [0.145, 0.19],
+  [0.4, 0.23],
+  [0.345, 0.115],
+  [0.47, -0.01],
+  [0.3, -0.075],
+  [0.33, -0.19],
+  [0.13, -0.15],
+  [0.15, -0.33],
+  [0.045, -0.3],
+  [0.045, -0.5],
+];
+
+/**
+ * Maple leaf flag. Bands run 1:2:1 rather than the tricolour's thirds, and the
+ * leaf sits in the white square. Sized to match the French flag rather than its
+ * official 2:1 ratio, so the pair hangs as a set.
+ */
+function CanadaFlag({
+  position,
+  rotation = 0,
+  width = 0.36,
+}: {
+  position: [number, number, number];
+  rotation?: number;
+  width?: number;
+}) {
+  const height = width / 1.5;
+  const red = '#d52b1e';
+
+  const leaf = useMemo(() => {
+    const shape = new THREE.Shape();
+    const s = height * 0.62; // leaf height, as a share of the flag's
+    const pts = [
+      ...MAPLE_HALF,
+      // mirror back up the left side, skipping the shared stem-bottom point
+      ...MAPLE_HALF.slice(0, -1)
+        .reverse()
+        .map(([x, y]) => [-x, y] as [number, number]),
+    ];
+    pts.forEach(([x, y], i) => {
+      if (i === 0) shape.moveTo(x * s, y * s);
+      else shape.lineTo(x * s, y * s);
+    });
+    shape.closePath();
+    return new THREE.ShapeGeometry(shape);
+  }, [height]);
+
+  return (
+    <group position={position} rotation={[0, 0, rotation]}>
+      {/* 1:2:1 — red quarter, white half, red quarter */}
+      <mesh position={[-width * 0.375, 0, 0]}>
+        <planeGeometry args={[width / 4, height]} />
+        <meshStandardMaterial color={red} {...CLAY} />
       </mesh>
+      <mesh position={[0, 0, 0]}>
+        <planeGeometry args={[width / 2, height]} />
+        <meshStandardMaterial color="#ffffff" {...CLAY} />
+      </mesh>
+      <mesh position={[width * 0.375, 0, 0]}>
+        <planeGeometry args={[width / 4, height]} />
+        <meshStandardMaterial color={red} {...CLAY} />
+      </mesh>
+      <mesh geometry={leaf} position={[0, 0, 0.001]}>
+        <meshStandardMaterial color={red} {...CLAY} />
+      </mesh>
+      <FlagPin width={width} height={height} />
     </group>
   );
 }
@@ -689,6 +777,7 @@ function Corkboard3D() {
           {/* Hung off the board's bottom edge (the frame spans +/-0.65 in y):
               the top ~27% overlaps the frame, the rest hangs free below it. */}
           <FrenchFlag position={[0.66, -0.71, 0.062]} rotation={-0.05} width={0.36} />
+          <CanadaFlag position={[0.22, -0.71, 0.062]} rotation={0.04} width={0.36} />
           {stickies.map((s) => (
             <group key={s.key} position={[s.x, s.y, s.z]} rotation={[0, 0, s.rot]}>
               <mesh>
