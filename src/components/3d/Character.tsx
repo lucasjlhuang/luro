@@ -154,8 +154,14 @@ const SASH_BAND: [number, number] = [0.5, 0.72];
  * its tint by hand. Roughly tracks the room: ambient falls to 0.32 of day,
  * directional to 0.11. Turn these two down for a darker character at night.
  */
+const DAY_EMISSIVE = 0.84; // full emissive read too hot against the clay room
 const NIGHT_EMISSIVE = 0.38; // intensity multiplier at full night
 const NIGHT_TINT = new THREE.Color('#8c9ad0'); // moonlight cast
+/** Bare skin reads brighter than cloth at the same emissive, so knock it back
+ *  a little further. Matches skin_body/face/nose/brow — NOT skin_hair (hair) or
+ *  skin_eyes (the recoloured iris, which is meant to catch the light). */
+const SKIN_DIM = 0.8;
+const isSkinMaterial = (name: string) => /skin_(body|face|nose|brow)/i.test(name);
 
 /**
  * Per-role model surgery, keyed by material name: which meshes are work gear
@@ -918,7 +924,11 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     const gear: THREE.Object3D[] = [];
     // Every material, with its original emissive stashed, so the night tint can
     // be re-applied from the base each frame instead of compounding.
-    const lit: Array<{ mat: THREE.Material & { emissive: THREE.Color; emissiveIntensity: number }; base: THREE.Color }> = [];
+    const lit: Array<{
+      mat: THREE.Material & { emissive: THREE.Color; emissiveIntensity: number };
+      base: THREE.Color;
+      dim: number;
+    }> = [];
     scene.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh)) return;
       obj.castShadow = true;
@@ -960,6 +970,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
         lit.push({
           mat: em as THREE.Material & { emissive: THREE.Color; emissiveIntensity: number },
           base: em.baseEmissive,
+          dim: isSkinMaterial(m.name) || isSkinMaterial(obj.name) ? SKIN_DIM : 1,
         });
       });
     });
@@ -1370,9 +1381,9 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
      * Fullbright models take no light from the scene, so the room's lamps
      * dimming does nothing to them on its own — fade the emissive by hand. */
     s.night = damp(s.night, isNight ? 1 : 0, 5);
-    const strength = 1 - (1 - NIGHT_EMISSIVE) * s.night;
-    fitted.lit.forEach(({ mat, base }) => {
-      mat.emissiveIntensity = strength;
+    const strength = DAY_EMISSIVE + (NIGHT_EMISSIVE - DAY_EMISSIVE) * s.night;
+    fitted.lit.forEach(({ mat, base, dim }) => {
+      mat.emissiveIntensity = strength * dim;
       mat.emissive.copy(base).lerp(TMP_COLOR.copy(base).multiply(NIGHT_TINT), s.night);
     });
 

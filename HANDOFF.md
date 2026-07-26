@@ -215,9 +215,11 @@ Two extra mechanisms exist for parts that share a material AND a colour:
 
 **Day/night:** these models are fullbright, so dimming the room's lamps does
 nothing to them — they stayed at full glow against a dark room. `emissive` is
-the only channel that reaches them, so the frame loop scales `emissiveIntensity`
-to `NIGHT_EMISSIVE` (0.38) and lerps the tint toward `NIGHT_TINT` (#8c9ad0),
-damped at the same rate as SceneLights. Those two consts are the dial. The base
+the only channel that reaches them, so the frame loop lerps `emissiveIntensity`
+from `DAY_EMISSIVE` (0.84) to `NIGHT_EMISSIVE` (0.38) and the tint toward
+`NIGHT_TINT` (#8c9ad0), damped at the same rate as SceneLights. Bare skin reads
+hotter than cloth at the same value, so skin_body/face/nose/brow take an extra
+`SKIN_DIM` (0.8) — not skin_hair or skin_eyes. Those four consts are the dials. The base
 emissive is stashed ON the material (`mat.baseEmissive`), not in the fit result:
 unpainted materials are shared with the source scene and outlive a re-fit, so
 re-reading a live, already-tinted emissive would compound it on every role swap.
