@@ -594,9 +594,10 @@ function seeded(id: string, salt: number): number {
 }
 
 /**
- * Small tricolour pinned to the cork. Three equal vertical bands (the flag has
- * been equal thirds since 1853) at the 3:2 ratio, sat below the sticky grid in
- * the bottom-right corner with a slight tilt so it reads as pinned on by hand.
+ * Small tricolour pinned to the corkboard. Three equal vertical bands (the flag
+ * has been equal thirds since 1853) at the 3:2 ratio, with a slight tilt so it
+ * reads as pinned on by hand. Hung so its top overlaps the board's bottom edge
+ * and the rest falls free below.
  */
 function FrenchFlag({
   position,
@@ -622,9 +623,9 @@ function FrenchFlag({
           <meshStandardMaterial color={color} {...CLAY} />
         </mesh>
       ))}
-      {/* push pin through the top edge */}
-      <mesh position={[0, height / 2 - 0.012, 0.008]} castShadow>
-        <sphereGeometry args={[0.016, 12, 12]} />
+      {/* push pin through the top edge, scaled with the flag */}
+      <mesh position={[0, height / 2 - height * 0.1, width * 0.04]} castShadow>
+        <sphereGeometry args={[width * 0.089, 12, 12]} />
         <meshStandardMaterial color="#d8c058" {...CLAY} />
       </mesh>
     </group>
@@ -685,9 +686,9 @@ function Corkboard3D() {
             <planeGeometry args={[1.68, 1.08]} />
             <meshStandardMaterial color={P.creamSoft} {...CLAY} />
           </mesh>
-          {/* Bottom-right of the cork face (which spans +/-0.84 x +/-0.54),
-              clear of the sticky grid above it. */}
-          <FrenchFlag position={[0.66, -0.455, 0.062]} rotation={-0.05} width={0.18} />
+          {/* Hung off the board's bottom edge (the frame spans +/-0.65 in y):
+              the top ~27% overlaps the frame, the rest hangs free below it. */}
+          <FrenchFlag position={[0.66, -0.71, 0.062]} rotation={-0.05} width={0.36} />
           {stickies.map((s) => (
             <group key={s.key} position={[s.x, s.y, s.z]} rotation={[0, 0, s.rot]}>
               <mesh>
