@@ -136,7 +136,11 @@ This project is personal and non-commercial.
   strict/symmetric NAT may fail to establish a data channel even though both show CONNECTING.
 - `macOSPrivateApi` is required for the transparent window and makes the app ineligible for the
   Mac App Store. Not an issue for direct distribution.
-- The CSP in `tauri.conf.json` allows only `self`, `blob:`/`data:` and the PeerJS broker. If a
+- The CSP in `tauri.conf.json` needs `'wasm-unsafe-eval'` in `script-src`: three-stdlib bundles
+  the Meshopt/Draco/KTX2 decoders via drei's GLTF loader, and Meshopt calls `WebAssembly.validate`
+  on startup even though none of our models use those formats. Without it the app throws a
+  `CompileError` before mounting.
+- The CSP allows only `self`, `blob:`/`data:` and the PeerJS broker. If a
   future change fetches from anywhere else it will be blocked — widen `connect-src`, or set
   `"csp": null` to rule CSP out while debugging. `blob:` in `connect-src` is load-bearing: three
   fetches GLB textures through blob URLs, so dropping it renders every model white. CSP problems

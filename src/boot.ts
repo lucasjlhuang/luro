@@ -39,7 +39,17 @@ function showFatal(title: string, detail: string): void {
     const p = document.createElement('div');
     p.textContent = detail;
     p.style.cssText = 'font-family:ui-monospace,Menlo,monospace;font-size:11px;opacity:.85';
-    el.append(h, p);
+    // Dismissible: not every caught error is fatal. The room may be running
+    // perfectly behind this panel, and an undismissable overlay would be a
+    // worse bug than the one it is reporting.
+    const x = document.createElement('button');
+    x.textContent = '\u2715';
+    x.setAttribute('aria-label', 'Dismiss');
+    x.style.cssText =
+      'position:absolute;top:8px;right:10px;border:0;background:transparent;' +
+      'font-size:13px;line-height:1;color:#8a7660;cursor:pointer;padding:2px';
+    x.onclick = () => el.remove();
+    el.append(h, p, x);
     document.body.appendChild(el);
   };
   if (document.body) mount();
@@ -59,6 +69,20 @@ window.addEventListener('unhandledrejection', (e) => {
   showFatal(
     'luro could not start',
     typeof r === 'string' ? r : `${r?.name ?? 'Error'}: ${r?.message ?? String(r)}`
+  );
+});
+
+/*
+ * CSP failures are invisible in `tauri dev` — no policy is applied there — and
+ * in a packaged build they surface as some unrelated-looking breakage: blocked
+ * textures, or a WebAssembly CompileError from a decoder nobody knew was
+ * loaded. Naming the directive that did it turns a guessing game into a fix.
+ */
+document.addEventListener('securitypolicyviolation', (e) => {
+  showFatal(
+    'Blocked by the app\u2019s security policy',
+    `directive: ${e.violatedDirective}\nblocked: ${e.blockedURI || '(inline/eval)'}\n\n` +
+      'Widen that directive in src-tauri/tauri.conf.json (app.security.csp).'
   );
 });
 
