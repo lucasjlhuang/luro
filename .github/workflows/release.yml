@@ -57,9 +57,16 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the updater artifacts. Without these two the build still
+          # succeeds but ships no signature, and clients reject the update.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'luro ${{ github.ref_name }}'
           releaseDraft: true
           prerelease: false
+          # publishes latest.json alongside the installers — the file the
+          # updater endpoint in tauri.conf.json points at
+          includeUpdaterJson: true
           args: ${{ matrix.args }}

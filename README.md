@@ -23,6 +23,25 @@ npm run tauri build
 Output lands in `src-tauri/target/release/bundle/` — `.app` and `.dmg` on macOS, `.msi` and an
 NSIS `.exe` on Windows.
 
+### Auto-update
+
+The app checks `https://github.com/lucasjlhuang/luro/releases/latest/download/latest.json` on
+launch and every 6 h, installs quietly in the background, and the new version takes effect on the
+next launch. Failures are swallowed — no network, no release yet, or a dev build must never break
+the app.
+
+Releases are built and signed by CI. Two repo secrets are required, or the update will build but
+ship unsigned and every client will reject it:
+
+| Secret | Value |
+| --- | --- |
+| `TAURI_SIGNING_PRIVATE_KEY` | contents of `~/.tauri/luro.key` |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | empty (the key was generated without one) |
+
+`~/.tauri/luro.key` is the *only* copy of the signing key and is deliberately outside the repo.
+**Lose it and no future build can ship an update to an already-installed app** — every client
+would need a fresh manual install.
+
 `npm run release` (macOS) does the same build and then replaces `/Applications/luro.app` with it,
 so the installed copy is never a stale snapshot. Note that a packaged app is always a build
 artifact — the frontend is compiled into the binary, so it only changes when you rebuild. For

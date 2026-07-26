@@ -51,6 +51,30 @@ export default function App() {
     initPeer();
   }, [initPeer]);
 
+  // Self-update. Installs quietly in the background; the new version takes
+  // effect next launch rather than yanking the window away mid-session. Every
+  // failure is swallowed on purpose — no network, no release yet, or running
+  // under `tauri dev` (where there is no updater at all) must never break the
+  // app. Re-checks every six hours for a desk that stays open for days.
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const { check } = await import('@tauri-apps/plugin-updater');
+        const update = await check();
+        if (update && !cancelled) await update.downloadAndInstall();
+      } catch {
+        /* offline, no release published, or dev build */
+      }
+    };
+    void poll();
+    const id = setInterval(poll, 6 * 60 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
   // A desktop overlay has no use for the browser context menu.
   useEffect(() => {
     const prevent = (e: Event) => e.preventDefault();

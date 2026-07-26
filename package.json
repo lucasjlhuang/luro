@@ -8,13 +8,15 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "release": "tauri build && ./scripts/install-local.sh"
+    "release": "TAURI_SIGNING_PRIVATE_KEY=\"$(cat $HOME/.tauri/luro.key)\" TAURI_SIGNING_PRIVATE_KEY_PASSWORD= tauri build && ./scripts/install-local.sh"
   },
   "dependencies": {
     "@fontsource/instrument-sans": "^5.3.0",
     "@react-three/drei": "^9.114.0",
     "@react-three/fiber": "^8.17.8",
     "@tauri-apps/api": "^2.1.1",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "peerjs": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
