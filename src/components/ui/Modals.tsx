@@ -691,22 +691,17 @@ function HabitsModal() {
     <DragShell id="habits">
       <div className="relative rounded-2xl p-3 shadow-xl" style={{ background: WOOD }}>
         <CloseButton />
-        <div
-          className="w-[452px] rounded-lg p-3 shadow-inner"
-          style={{
-            background: '#ffffff',
-            backgroundImage: 'radial-gradient(rgba(70,70,74,0.35) 1px, transparent 1px)',
-            backgroundSize: '9px 9px',
-          }}
-        >
-          <div className="grid" style={{ gridTemplateColumns: '1fr repeat(7, 30px)' }}>
+        <div className="w-[352px] rounded-lg p-3 shadow-inner" style={{ background: CREAM_SOFT }}>
+          {/* Activity column is fixed, not 1fr: names cap at 15 characters, so
+              a flexible column just opened a gap before the checkboxes. */}
+          <div className="grid" style={{ gridTemplateColumns: '132px repeat(7, 28px)' }}>
             {/* header row */}
             <div />
             {WEEKDAYS.map((d, i) => (
               <div
                 key={d}
                 className="pb-1 text-center text-[10px] font-semibold"
-                style={{ color: i === today ? '#c2632a' : '#6c6c72' }}
+                style={{ color: i === today ? '#c2632a' : '#9b8a6e' }}
               >
                 {d}
               </div>
@@ -725,14 +720,14 @@ function HabitsModal() {
                     maxLength={HABIT_NAME_MAX}
                     onChange={(e) => renameHabit(h.id, e.target.value)}
                     placeholder="Activity…"
-                    className="min-w-0 flex-1 rounded bg-transparent px-1 py-1 text-[11px] font-medium outline-none placeholder:text-[#a0a0a6] focus:bg-black/[0.04]"
+                    className="min-w-0 flex-1 rounded bg-transparent px-1 py-1 text-[11px] font-medium outline-none placeholder:text-[#a89a7e] focus:bg-white/60"
                     style={{ color: ROLE_COLOR[h.author] }}
                   />
                   <button
                     onClick={() => deleteHabit(h.id)}
                     title="Remove"
                     className="opacity-0 transition-opacity group-hover:opacity-100"
-                    style={{ color: '#9a9aa0', fontSize: 11, lineHeight: 1 }}
+                    style={{ color: '#a89a7e', fontSize: 11, lineHeight: 1 }}
                   >
                     ✕
                   </button>
@@ -745,8 +740,8 @@ function HabitsModal() {
                       aria-pressed={on}
                       className="flex h-[19px] w-[19px] items-center justify-center rounded-[5px] border text-[11px] leading-none shadow-sm transition-colors"
                       style={{
-                        background: on ? ROLE_COLOR[h.author] : '#ffffff',
-                        borderColor: on ? ROLE_COLOR[h.author] : '#c9c9cf',
+                        background: on ? ROLE_COLOR[h.author] : '#faf4e2',
+                        borderColor: on ? ROLE_COLOR[h.author] : '#d8c9a6',
                         color: '#ffffff',
                       }}
                     >
@@ -758,20 +753,14 @@ function HabitsModal() {
             ))}
           </div>
 
-          {habits.length === 0 && (
-            <div className="px-1 py-3 text-[11px] italic text-[#9a9aa0]">
-              No activities yet — add one below.
-            </div>
-          )}
-
-          <form onSubmit={submit} className="mt-2 flex gap-2 border-t border-black/10 pt-2">
+          <form onSubmit={submit} className="mt-2 flex gap-2 border-t border-[#dccda9] pt-2">
             <input
               value={draft}
               maxLength={HABIT_NAME_MAX}
               onChange={(e) => setDraft(e.target.value)}
               placeholder="Add activity…"
-              className="min-w-0 flex-1 rounded-md px-2 py-1 text-[11px] text-[#3f3f45] outline-none"
-              style={{ background: 'rgba(0,0,0,0.05)' }}
+              className="min-w-0 flex-1 rounded-md px-2 py-1 text-[11px] text-[#5f4b33] outline-none"
+              style={{ background: '#faf4e2' }}
             />
             <button
               type="submit"
