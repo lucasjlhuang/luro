@@ -14,6 +14,7 @@ export type ModalType =
   | 'NOTEBOOK'
   | 'CORKBOARD'
   | 'WHITEBOARD'
+  | 'HABITS'
   | 'SETTINGS'
   | 'SPEECH';
 export type TaskStatus = 'TODO' | 'IN_PROGRESS';
@@ -46,6 +47,42 @@ export interface Task {
   status: TaskStatus;
   createdAt: number;
 }
+
+/** Monday-first, so `days[0]` is Monday and `days[6]` Sunday. */
+export const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+
+/** Activity names are kept short so a row fits the grid without wrapping. */
+export const HABIT_NAME_MAX = 15;
+
+export interface Habit {
+  id: string;
+  name: string;
+  /** Who added it — the row is colour-coded by author. */
+  author: Role;
+  /** Seven ticks, Monday..Sunday. */
+  days: boolean[];
+}
+
+/**
+ * The habit board is SHARED, not per-user: one grid both people edit, unlike
+ * tasks and notes which are mine/theirs. Resolved last-write-wins on
+ * `updatedAt`, the same way the timer and lighting are.
+ */
+export interface HabitBoard {
+  habits: Habit[];
+  updatedAt: number;
+}
+
+/** Guards against a peer or an old persisted board sending a short row. */
+const sanitizeHabits = (board: HabitBoard): HabitBoard => ({
+  updatedAt: board?.updatedAt ?? 0,
+  habits: (board?.habits ?? []).map((h) => ({
+    id: String(h.id),
+    name: String(h.name ?? '').slice(0, HABIT_NAME_MAX),
+    author: h.author === 'USER_B' ? 'USER_B' : 'USER_A',
+    days: Array.from({ length: 7 }, (_, i) => h.days?.[i] === true),
+  })),
+});
 
 /** A whiteboard stroke; points are normalized [x0, y0, x1, y1, ...] in 0..1. */
 export interface Stroke {
@@ -92,11 +129,13 @@ interface FullSyncPayload {
   timer: TimerState;
   myStatus: CharacterStatus;
   myBubble: Bubble;
+  habits: HabitBoard;
 }
 
 type SyncMessage =
   | { type: 'NOTE_UPDATE'; payload: string }
   | { type: 'TASK_UPDATE'; payload: Task[] }
+  | { type: 'HABITS'; payload: HabitBoard }
   | { type: 'STROKE_ADD'; payload: Stroke }
   | { type: 'WHITEBOARD_CLEAR' }
   | { type: 'LIGHTING'; payload: { isNightMode: boolean; updatedAt: number } }
@@ -119,6 +158,7 @@ export interface AppState {
   partnerNotes: string;
   myTasks: Task[];
   partnerTasks: Task[];
+  habits: HabitBoard;
   isNightMode: boolean;
   lightingUpdatedAt: number;
   strokes: Stroke[];
@@ -140,6 +180,10 @@ export interface AppState {
   setMyNotes: (text: string) => void;
   addTask: (text: string) => void;
   updateTaskStatus: (id: string, status: TaskStatus) => void;
+  addHabit: (name: string) => void;
+  renameHabit: (id: string, name: string) => void;
+  toggleHabitDay: (id: string, day: number) => void;
+  deleteHabit: (id: string) => void;
   deleteTask: (id: string) => void;
   toggleNightMode: () => void;
   addLocalStroke: (stroke: Omit<Stroke, 'id' | 'author' | 't'>) => void;
@@ -178,6 +222,7 @@ export const useAppStore = create<AppState>()(
       myNotes: '',
       partnerNotes: '',
       myTasks: [],
+      habits: { habits: [], updatedAt: 0 },
       partnerTasks: [],
       isNightMode: false,
       lightingUpdatedAt: 0,
@@ -212,6 +257,65 @@ export const useAppStore = create<AppState>()(
       setMyNotes: (text) => {
         set({ myNotes: text });
         broadcast({ type: 'NOTE_UPDATE', payload: text });
+      },
+
+      /* Habits are a single shared board: every edit republishes the whole
+         thing with a fresh timestamp, and the peer takes it if it is newer.
+         Same last-write-wins as the timer — simultaneous edits on both ends
+         can drop one, which is fine for two people and one small grid. */
+      addHabit: (name) => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        set({
+          habits: {
+            habits: [
+              ...get().habits.habits,
+              {
+                id: uid(),
+                name: trimmed.slice(0, HABIT_NAME_MAX),
+                author: get().role,
+                days: Array.from({ length: 7 }, () => false),
+              },
+            ],
+            updatedAt: Date.now(),
+          },
+        });
+        broadcast({ type: 'HABITS', payload: get().habits });
+      },
+
+      renameHabit: (id, name) => {
+        set({
+          habits: {
+            habits: get().habits.habits.map((h) =>
+              h.id === id ? { ...h, name: name.slice(0, HABIT_NAME_MAX) } : h
+            ),
+            updatedAt: Date.now(),
+          },
+        });
+        broadcast({ type: 'HABITS', payload: get().habits });
+      },
+
+      toggleHabitDay: (id, day) => {
+        if (day < 0 || day > 6) return;
+        set({
+          habits: {
+            habits: get().habits.habits.map((h) =>
+              h.id === id ? { ...h, days: h.days.map((d, i) => (i === day ? !d : d)) } : h
+            ),
+            updatedAt: Date.now(),
+          },
+        });
+        broadcast({ type: 'HABITS', payload: get().habits });
+      },
+
+      deleteHabit: (id) => {
+        set({
+          habits: {
+            habits: get().habits.habits.filter((h) => h.id !== id),
+            updatedAt: Date.now(),
+          },
+        });
+        broadcast({ type: 'HABITS', payload: get().habits });
       },
 
       addTask: (text) => {
@@ -349,6 +453,7 @@ export const useAppStore = create<AppState>()(
         partnerNotes: s.partnerNotes,
         myTasks: s.myTasks,
         partnerTasks: s.partnerTasks,
+        habits: s.habits,
         isNightMode: s.isNightMode,
         lightingUpdatedAt: s.lightingUpdatedAt,
         strokes: s.strokes,
@@ -366,6 +471,10 @@ export const useAppStore = create<AppState>()(
             timer: { ...state.timer, isRunning: false, endsAt: null, remainingMs: remaining },
           });
         }
+        // A board persisted by an older build may predate the habit grid.
+        useAppStore.setState({
+          habits: sanitizeHabits(state.habits ?? { habits: [], updatedAt: 0 }),
+        });
         // Statuses persisted by an older build may no longer exist.
         useAppStore.setState({
           myStatus: sanitizeStatus(state.myStatus),
@@ -515,6 +624,7 @@ function buildFullSync(): SyncMessage {
       timer: s.timer,
       myStatus: s.myStatus,
       myBubble: s.myBubble,
+      habits: s.habits,
     },
   };
 }
@@ -534,6 +644,11 @@ function handleMessage(msg: SyncMessage): void {
       break;
     case 'TASK_UPDATE':
       useAppStore.setState({ partnerTasks: msg.payload });
+      break;
+    case 'HABITS':
+      useAppStore.setState((s) =>
+        msg.payload.updatedAt >= s.habits.updatedAt ? { habits: sanitizeHabits(msg.payload) } : {}
+      );
       break;
     case 'STROKE_ADD':
       useAppStore.setState((s) =>
@@ -576,6 +691,9 @@ function handleMessage(msg: SyncMessage): void {
           ? { isNightMode: p.isNightMode, lightingUpdatedAt: p.lightingUpdatedAt }
           : {}),
         ...(p.timer.updatedAt > s.timer.updatedAt ? { timer: p.timer } : {}),
+        ...((p.habits?.updatedAt ?? 0) > s.habits.updatedAt
+          ? { habits: sanitizeHabits(p.habits) }
+          : {}),
       }));
       break;
     }

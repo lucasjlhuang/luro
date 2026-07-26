@@ -681,6 +681,7 @@ const OBSTACLES = [
   { minX: -3.05, maxX: -2.15, minZ: -2.95, maxZ: -2.05 }, // monstera
   { minX: 2.2, maxX: 3.1, minZ: -3.0, maxZ: -2.1 }, // laundry basket
   { minX: -2.93, maxX: -2.17, minZ: 2.17, maxZ: 2.93 }, // toy car
+  { minX: -2.11, maxX: -1.49, minZ: 2.47, maxZ: 2.77 }, // dumbbell
 ];
 
 function blocked(x: number, z: number): boolean {

@@ -59,6 +59,22 @@ back; expect blind-tuning loops ("move it 25px left").
   free below). Bed (brown blanket/pillows, beige mattress, star pillow, striped
   navy/purple shirt), Djungelskog Prop on bed, chairs at [0.62,0,-1.2] &
   [-0.42,0,-1.2] scale 1.12, laundry basket, monstera, toy car.
+  Desk notebook scribbles MIRROR the real notes: left page `myNotes`, right page
+  `partnerNotes` (same spread as the panel), one row per written line, blank
+  lines left blank, lines wrapped at 34 chars, 7 rows max. No text = no marks.
+- **Habit tracker** — `Dumbbell` on the floor at [-1.8, 0.07, 2.62] beside the
+  toy car opens the `HABITS` panel. Unlike notes and tasks (which are
+  mine/theirs), the board is a SINGLE SHARED grid: `habits: { habits, updatedAt }`
+  in the store, every edit republishing the whole board and resolved
+  last-write-wins on `updatedAt`, same as the timer. Simultaneous edits from
+  both ends can drop one — fine for two people and one small grid.
+  - `Habit` = { id, name, author, days[7] }, days Monday-first (`WEEKDAYS`).
+    `sanitizeHabits` pads short rows, clamps names to `HABIT_NAME_MAX` (15) and
+    defaults a missing author, so older peers and older persisted boards load.
+  - Rows are colour-coded by author via `ROLE_COLOR` in Modals.tsx — Lulu
+    #4489a3 (sampled from his shirt texture), Roro #00a86b (her dress).
+  - The dumbbell is in Character.tsx's `OBSTACLES`; verified the front-of-bed
+    lane and waypoint 5 are still clear and all 13 waypoints still reachable.
 - `src/components/3d/Prop.tsx` — GLB decor loader: instance-aware bounds
   (InstancedMesh.computeBoundingBox), `frustumCulled=false`, fit axis+size,
   ground, `matte`, `envIntensity`, `brightness` (idempotent via stashed baseColor).

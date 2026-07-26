@@ -1,4 +1,5 @@
 import {
+  Fragment,
   FormEvent,
   PointerEvent as ReactPointerEvent,
   ReactNode,
@@ -8,7 +9,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Role, useAppStore } from '../../store/useAppStore';
+import { HABIT_NAME_MAX, Role, WEEKDAYS, useAppStore } from '../../store/useAppStore';
 import { renderStrokes } from '../../lib/strokes';
 import { CURSOR, lockCursor, setCursor, unlockCursor } from '../../lib/cursors';
 import { setForceInteractive } from '../../lib/hitTest';
@@ -659,6 +660,133 @@ function TimerModal() {
 /* Modal layer                                                        */
 /* ------------------------------------------------------------------ */
 
+/** Activity rows are colour-coded by who added them: Lulu takes his shirt's
+ *  teal-blue, Roro her dress green — both sampled from the models themselves. */
+const ROLE_COLOR: Record<Role, string> = { USER_A: '#4489a3', USER_B: '#00a86b' };
+
+/* ------------------------------------------------------------------ */
+/* Habit tracker: one shared grid, days across, activities down.      */
+/* Either user can rename a row or tick a box; both see it.           */
+/* ------------------------------------------------------------------ */
+
+function HabitsModal() {
+  const habits = useAppStore((s) => s.habits.habits);
+  const addHabit = useAppStore((s) => s.addHabit);
+  const renameHabit = useAppStore((s) => s.renameHabit);
+  const toggleHabitDay = useAppStore((s) => s.toggleHabitDay);
+  const deleteHabit = useAppStore((s) => s.deleteHabit);
+  const [draft, setDraft] = useState('');
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    addHabit(draft);
+    setDraft('');
+  };
+
+  // Today's column gets a highlight. JS weeks start Sunday; the board starts
+  // Monday, so shift by one.
+  const today = (new Date().getDay() + 6) % 7;
+
+  return (
+    <DragShell id="habits">
+      <div className="relative rounded-2xl p-3 shadow-xl" style={{ background: WOOD }}>
+        <CloseButton />
+        <div
+          className="w-[452px] rounded-lg p-3 shadow-inner"
+          style={{
+            background: '#ffffff',
+            backgroundImage: 'radial-gradient(rgba(70,70,74,0.35) 1px, transparent 1px)',
+            backgroundSize: '9px 9px',
+          }}
+        >
+          <div className="grid" style={{ gridTemplateColumns: '1fr repeat(7, 30px)' }}>
+            {/* header row */}
+            <div />
+            {WEEKDAYS.map((d, i) => (
+              <div
+                key={d}
+                className="pb-1 text-center text-[10px] font-semibold"
+                style={{ color: i === today ? '#c2632a' : '#6c6c72' }}
+              >
+                {d}
+              </div>
+            ))}
+
+            {habits.map((h) => (
+              <Fragment key={h.id}>
+                <div className="group flex items-center gap-1 pr-2">
+                  <span
+                    aria-hidden
+                    className="h-3 w-[3px] shrink-0 rounded-full"
+                    style={{ background: ROLE_COLOR[h.author] }}
+                  />
+                  <input
+                    value={h.name}
+                    maxLength={HABIT_NAME_MAX}
+                    onChange={(e) => renameHabit(h.id, e.target.value)}
+                    placeholder="Activity…"
+                    className="min-w-0 flex-1 rounded bg-transparent px-1 py-1 text-[11px] font-medium outline-none placeholder:text-[#a0a0a6] focus:bg-black/[0.04]"
+                    style={{ color: ROLE_COLOR[h.author] }}
+                  />
+                  <button
+                    onClick={() => deleteHabit(h.id)}
+                    title="Remove"
+                    className="opacity-0 transition-opacity group-hover:opacity-100"
+                    style={{ color: '#9a9aa0', fontSize: 11, lineHeight: 1 }}
+                  >
+                    ✕
+                  </button>
+                </div>
+                {h.days.map((on, i) => (
+                  <div key={i} className="flex items-center justify-center py-0.5">
+                    <button
+                      onClick={() => toggleHabitDay(h.id, i)}
+                      aria-label={`${h.name || 'activity'} ${WEEKDAYS[i]}`}
+                      aria-pressed={on}
+                      className="flex h-[19px] w-[19px] items-center justify-center rounded-[5px] border text-[11px] leading-none shadow-sm transition-colors"
+                      style={{
+                        background: on ? ROLE_COLOR[h.author] : '#ffffff',
+                        borderColor: on ? ROLE_COLOR[h.author] : '#c9c9cf',
+                        color: '#ffffff',
+                      }}
+                    >
+                      {on ? '✓' : ''}
+                    </button>
+                  </div>
+                ))}
+              </Fragment>
+            ))}
+          </div>
+
+          {habits.length === 0 && (
+            <div className="px-1 py-3 text-[11px] italic text-[#9a9aa0]">
+              No activities yet — add one below.
+            </div>
+          )}
+
+          <form onSubmit={submit} className="mt-2 flex gap-2 border-t border-black/10 pt-2">
+            <input
+              value={draft}
+              maxLength={HABIT_NAME_MAX}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Add activity…"
+              className="min-w-0 flex-1 rounded-md px-2 py-1 text-[11px] text-[#3f3f45] outline-none"
+              style={{ background: 'rgba(0,0,0,0.05)' }}
+            />
+            <button
+              type="submit"
+              className="rounded-md px-3 py-1 text-[11px] font-semibold text-white shadow"
+              style={{ background: ORANGE }}
+            >
+              Add
+            </button>
+          </form>
+        </div>
+      </div>
+    </DragShell>
+  );
+}
+
 export function ModalLayer() {
   const activeModal = useAppStore((s) => s.activeModal);
   const setActiveModal = useAppStore((s) => s.setActiveModal);
@@ -679,6 +807,7 @@ export function ModalLayer() {
       {activeModal === 'CORKBOARD' && <CorkboardModal />}
       {activeModal === 'WHITEBOARD' && <WhiteboardModal />}
       {activeModal === 'TIMER' && <TimerModal />}
+      {activeModal === 'HABITS' && <HabitsModal />}
       {/* SPEECH renders in-scene as an editable bubble over the character */}
     </div>
   );

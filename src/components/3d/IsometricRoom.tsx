@@ -549,6 +549,50 @@ function AlarmClock() {
 
 function Notebook3D() {
   const setActiveModal = useAppStore((s) => s.setActiveModal);
+  const myNotes = useAppStore((s) => s.myNotes);
+  const partnerNotes = useAppStore((s) => s.partnerNotes);
+
+  /* The scribbles MIRROR what is actually written: left page is your notes,
+     right page your partner's, matching the notebook panel's two-page spread.
+     A blank line leaves its row empty and each line's length sets how far its
+     scribble runs, so the desk reads like the page you typed. */
+  const scribbles = useMemo(() => {
+    const ROWS = 7; // rows that fit a page
+    const PER_ROW = 34; // characters before writing wraps to the next row
+    const RUN = 0.38; // width of a full row of writing
+
+    const rowsOf = (text: string): string[] => {
+      const rows: string[] = [];
+      for (const line of text.split('\n')) {
+        if (!line.trim()) {
+          rows.push(''); // blank line stays blank
+          continue;
+        }
+        for (let i = 0; i < line.length; i += PER_ROW) rows.push(line.slice(i, i + PER_ROW));
+      }
+      return rows.slice(0, ROWS);
+    };
+
+    const build = (text: string, pageX: number, tag: string) =>
+      rowsOf(text).flatMap((row, i) => {
+        const len = row.trim().length;
+        if (!len) return [];
+        const key = `${tag}-${i}`;
+        const w = Math.max(0.05, RUN * Math.min(1, len / PER_ROW));
+        return [
+          {
+            key,
+            x: pageX - RUN / 2 + w / 2 + (seeded(key, 4) - 0.5) * 0.012,
+            z: -0.27 + i * 0.09 + (seeded(key, 5) - 0.5) * 0.01,
+            w,
+            rot: (seeded(key, 6) - 0.5) * 0.05,
+          },
+        ];
+      });
+
+    return [...build(myNotes, -0.27, 'me'), ...build(partnerNotes, 0.27, 'partner')];
+  }, [myNotes, partnerNotes]);
+
   return (
     <Interactive
       position={[0.35, 1.51, -1.95]}
@@ -573,6 +617,17 @@ function Notebook3D() {
             <boxGeometry args={[0.52, 0.03, 0.74]} />
             <meshStandardMaterial color={P.white} {...CLAY} />
           </mesh>
+          {/* scribbled lines so the open pages read as written on */}
+          {scribbles.map((l) => (
+            <mesh
+              key={l.key}
+              position={[l.x, 0.086, l.z]}
+              rotation={[-Math.PI / 2, 0, l.rot]}
+            >
+              <planeGeometry args={[l.w, 0.012]} />
+              <meshStandardMaterial color="#7d6a52" transparent opacity={0.55} />
+            </mesh>
+          ))}
         </>
       )}
     </Interactive>
@@ -717,6 +772,69 @@ function CanadaFlag({
       </mesh>
       <FlagPin width={width} height={height} />
     </group>
+  );
+}
+
+/**
+ * Dumbbell on the floor — the habit tracker's handle. Lies on its side, so the
+ * plates carry it: the group rides at plate-radius above the plank tops (0.07)
+ * to sit ON the boards rather than sunk into them.
+ */
+function Dumbbell({
+  position,
+  rotationY = 0,
+}: {
+  position: [number, number, number];
+  rotationY?: number;
+}) {
+  const setActiveModal = useAppStore((s) => s.setActiveModal);
+  const R = 0.13; // outer plate radius
+  return (
+    <Interactive
+      position={position}
+      rotation={[0, rotationY, 0]}
+      onSelect={() => setActiveModal('HABITS')}
+    >
+      {(hovered) => (
+        <group position={[0, R, 0]}>
+          {/* knurled bar, laid along x */}
+          <mesh rotation={[0, 0, Math.PI / 2]} castShadow>
+            <cylinderGeometry args={[0.032, 0.032, 0.42, 12]} />
+            <meshStandardMaterial
+              color={P.metal}
+              roughness={0.5}
+              metalness={0.45}
+              emissive={hovered ? '#ffb060' : '#000000'}
+              emissiveIntensity={0.3}
+            />
+          </mesh>
+          {[-1, 1].map((side) => (
+            <group key={side}>
+              <mesh position={[side * 0.175, 0, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
+                <cylinderGeometry args={[R, R, 0.055, 20]} />
+                <meshStandardMaterial
+                  color="#4a4a52"
+                  roughness={0.7}
+                  metalness={0.3}
+                  emissive={hovered ? '#ffb060' : '#000000'}
+                  emissiveIntensity={0.25}
+                />
+              </mesh>
+              <mesh position={[side * 0.113, 0, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
+                <cylinderGeometry args={[0.104, 0.104, 0.05, 20]} />
+                <meshStandardMaterial
+                  color="#5b5b66"
+                  roughness={0.7}
+                  metalness={0.3}
+                  emissive={hovered ? '#ffb060' : '#000000'}
+                  emissiveIntensity={0.25}
+                />
+              </mesh>
+            </group>
+          ))}
+        </group>
+      )}
+    </Interactive>
   );
 }
 
@@ -1371,6 +1489,8 @@ export default function IsometricRoom() {
         <LaundryBasket position={[2.65, 0, -2.55]} />
         <Monstera position={[-2.6, 0, -2.5]} rotationY={2.1} scale={0.92} />
         <ToyCar position={[-2.55, 0, 2.55]} rotationY={-0.6} />
+        {/* habit tracker, on the boards beside the toy car and the bed's foot */}
+        <Dumbbell position={[-1.8, 0.07, 2.62]} rotationY={0.35} />
         <DeskChair position={[0.62, 0, -1.2]} scale={1.12} />
         <DeskChair position={[-0.42, 0, -1.2]} scale={1.12} />
         <Character variant="me" />
