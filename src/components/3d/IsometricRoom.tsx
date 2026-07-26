@@ -593,6 +593,44 @@ function seeded(id: string, salt: number): number {
   return (h >>> 0) / 4294967296;
 }
 
+/**
+ * Small tricolour pinned to the cork. Three equal vertical bands (the flag has
+ * been equal thirds since 1853) at the 3:2 ratio, sat below the sticky grid in
+ * the bottom-right corner with a slight tilt so it reads as pinned on by hand.
+ */
+function FrenchFlag({
+  position,
+  rotation = 0,
+  width = 0.2,
+}: {
+  position: [number, number, number];
+  rotation?: number;
+  width?: number;
+}) {
+  const height = width / 1.5;
+  const band = width / 3;
+  const bands: Array<[string, number]> = [
+    ['#0055a4', -band],
+    ['#ffffff', 0],
+    ['#ef4135', band],
+  ];
+  return (
+    <group position={position} rotation={[0, 0, rotation]}>
+      {bands.map(([color, x]) => (
+        <mesh key={color} position={[x, 0, 0]}>
+          <planeGeometry args={[band, height]} />
+          <meshStandardMaterial color={color} {...CLAY} />
+        </mesh>
+      ))}
+      {/* push pin through the top edge */}
+      <mesh position={[0, height / 2 - 0.012, 0.008]} castShadow>
+        <sphereGeometry args={[0.016, 12, 12]} />
+        <meshStandardMaterial color="#d8c058" {...CLAY} />
+      </mesh>
+    </group>
+  );
+}
+
 function Corkboard3D() {
   const setActiveModal = useAppStore((s) => s.setActiveModal);
   const myTasks = useAppStore((s) => s.myTasks);
@@ -647,6 +685,9 @@ function Corkboard3D() {
             <planeGeometry args={[1.68, 1.08]} />
             <meshStandardMaterial color={P.creamSoft} {...CLAY} />
           </mesh>
+          {/* Bottom-right of the cork face (which spans +/-0.84 x +/-0.54),
+              clear of the sticky grid above it. */}
+          <FrenchFlag position={[0.66, -0.455, 0.062]} rotation={-0.05} width={0.18} />
           {stickies.map((s) => (
             <group key={s.key} position={[s.x, s.y, s.z]} rotation={[0, 0, s.rot]}>
               <mesh>

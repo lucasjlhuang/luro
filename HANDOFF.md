@@ -54,7 +54,8 @@ back; expect blind-tuning loops ("move it 25px left").
   popover: circular Lulu/Roro buttons via Html; blue ring Lulu, pink ring Roro).
   Boards at y 2.1 (whiteboard shows live strokes via `renderStrokes`; corkboard
   stickies = tasks: yellow todo / light-blue in-progress / pink partner, seeded
-  scatter). Bed (brown blanket/pillows, beige mattress, star pillow, striped
+  scatter; `FrenchFlag` pinned bottom-right of the cork face, which spans
+  +/-0.84 x +/-0.54 — placed clear of the sticky grid's lowest possible edge). Bed (brown blanket/pillows, beige mattress, star pillow, striped
   navy/purple shirt), Djungelskog Prop on bed, chairs at [0.62,0,-1.2] &
   [-0.42,0,-1.2] scale 1.12, laundry basket, monstera, toy car.
 - `src/components/3d/Prop.tsx` — GLB decor loader: instance-aware bounds
