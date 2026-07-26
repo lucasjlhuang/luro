@@ -100,6 +100,13 @@ Icons are generated from `src-tauri/app-icon.png` with `npx tauri icon src-tauri
 - **Habit tracker** — the dumbbell opens a shared weekly grid. Unlike notes and tasks, which are
   per-user, this is one board both people edit, resolved last-write-wins on `updatedAt`.
 
+## Compatibility
+
+macOS 11 Big Sur and later. The universal build carries both slices (Intel min 10.13, Apple
+Silicon min 11.0), and Vite targets `safari14` because Big Sur's WKWebView tracks Safari 14–15.6
+— building with `esnext` can emit syntax that WebKit rejects outright, which shows up as a blank
+window rather than an error. If you ever raise that target, test on the oldest macOS you support.
+
 ## Asset credits
 
 Models from Sketchfab, bundled as compressed GLB (the bear decimated from a 1.3M-triangle scan).

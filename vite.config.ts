@@ -10,7 +10,10 @@ export default defineConfig({
     strictPort: true,
   },
   build: {
-    target: 'esnext',
+    // Big Sur (macOS 11) ships Safari 14, and WKWebView tracks Safari — so the
+    // bundle must parse there. 'esnext' emitted syntax that older WebKit can
+    // reject outright, which surfaces as a blank window rather than an error.
+    target: 'safari14',
     sourcemap: false,
     // Inline the cursor PNGs (~4KB each) so the bundle stays self-contained.
     assetsInlineLimit: 8192,
