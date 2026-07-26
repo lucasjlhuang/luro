@@ -2,7 +2,7 @@ import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { ThreeEvent, useFrame, useThree } from '@react-three/fiber';
 import { Html, RoundedBox } from '@react-three/drei';
-import { useAppStore } from '../../store/useAppStore';
+import { PAIR_CODE_MAX, useAppStore } from '../../store/useAppStore';
 import { registerHitTest, setForceInteractive } from '../../lib/hitTest';
 import { renderStrokes } from '../../lib/strokes';
 import { panBy, savePan } from '../../lib/pan';
@@ -1238,6 +1238,11 @@ function PencilCup({ position }: { position: [number, number, number] }) {
   const open = useAppStore((s) => s.activeModal === 'SETTINGS');
   const role = useAppStore((s) => s.role);
   const setRole = useAppStore((s) => s.setRole);
+  const pairCode = useAppStore((s) => s.pairCode);
+  const setPairCode = useAppStore((s) => s.setPairCode);
+  const connection = useAppStore((s) => s.connectionStatus);
+  const [codeDraft, setCodeDraft] = useState(pairCode);
+  useEffect(() => setCodeDraft(pairCode), [pairCode]);
   const pens: Array<{ x: number; z: number; tiltX: number; tiltZ: number; h: number; color: string }> = [
     { x: 0.03, z: 0.02, tiltX: 0.1, tiltZ: 0.08, h: 0.34, color: '#e8b25c' },
     { x: -0.04, z: 0.03, tiltX: -0.06, tiltZ: -0.14, h: 0.3, color: P.orange },
@@ -1252,7 +1257,8 @@ function PencilCup({ position }: { position: [number, number, number] }) {
           {open && (
             <group position={[0, 0.95, 0]}>
               <Html center zIndexRange={[15, 0]}>
-                <div data-interactive className="flex gap-1.5">
+                <div data-interactive className="flex flex-col items-center gap-1.5">
+                  <div className="flex gap-1.5">
                   {(['USER_A', 'USER_B'] as const).map((r) => (
                     <button
                       key={r}
@@ -1271,6 +1277,42 @@ function PencilCup({ position }: { position: [number, number, number] }) {
                       {r === 'USER_A' ? 'Lulu' : 'Roro'}
                     </button>
                   ))}
+                  </div>
+                  {/* Both desks must type the same code; anyone on a different
+                      code is in a different room and cannot collide with you. */}
+                  <div className="flex flex-col items-center gap-0.5 rounded-lg bg-white/85 px-2 py-1.5 shadow-lg backdrop-blur">
+                    <span className="text-[8px] font-semibold uppercase tracking-wide text-slate-500">
+                      Pair code
+                    </span>
+                    <input
+                      value={codeDraft}
+                      maxLength={PAIR_CODE_MAX}
+                      onChange={(e) => setCodeDraft(e.target.value)}
+                      onBlur={() => setPairCode(codeDraft)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') setPairCode(codeDraft);
+                      }}
+                      spellCheck={false}
+                      className="w-[92px] rounded bg-slate-100 px-1.5 py-0.5 text-center text-[11px] font-mono tracking-wider text-slate-700 outline-none"
+                    />
+                    <span
+                      className="text-[8px] font-medium"
+                      style={{
+                        color:
+                          connection === 'CONNECTED'
+                            ? '#3f9a72'
+                            : connection === 'CONNECTING'
+                              ? '#b08540'
+                              : '#a05353',
+                      }}
+                    >
+                      {connection === 'CONNECTED'
+                        ? 'connected'
+                        : connection === 'CONNECTING'
+                          ? 'waiting for partner…'
+                          : 'offline'}
+                    </span>
+                  </div>
                 </div>
               </Html>
             </group>

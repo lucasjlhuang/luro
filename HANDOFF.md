@@ -288,11 +288,18 @@ atlas per triangle) is what identified the sash vs the hem in the first place.
 - Icons come from `src-tauri/app-icon.png` (the user's pink hearts, 300x300)
   via `npx tauri icon`; the android/ios sets it emits are deleted each time.
   A 1024x1024 source would be sharper at the largest macOS sizes.
-- `identifier` is DELIBERATELY still `com.deskoverlay.app` after the rename to
-  luro: it keys the webview data dir, so changing it wipes every user's
-  localStorage (notes, tasks, habits). Only change it on a clean start.
-- Peer IDs are still `desk-overlay-user-a/b` for the same reason — changing
-  them breaks sync against any device still on an older build.
+- `identifier` is `com.luro.app` (changed from com.deskoverlay.app WITH the
+  user's approval — it keys the webview data dir, so that reset every local
+  store: notes, tasks, habits, strokes. Do not change it again casually).
+- Peer ids are no longer constants: `peerIdFor(code, role)` ->
+  `luro-<paircode>-a|b`. Both desks must share a pair code (pencil cup UI);
+  fresh installs generate a random one. This is what stops a third device
+  taking a slot and locking the real partner out — the old fixed ids meant
+  every install worldwide fought over the same two.
+- Roles auto-claim when `rolePinned` is false: ask for USER_A, fall back to
+  USER_B on `unavailable-id`. Choosing by hand sets `rolePinned` and the desk
+  then waits for its own id instead of swapping. Known gap: auto-claim is
+  first-come, so if the partner's desk boots first it takes Lulu.
 - CSP is now set (was null). It allows `self` plus the PeerJS broker only. It
   is the highest-risk item in the packaging pass because a mistake here shows
   up only at runtime — if the packaged app boots blank or cannot connect, set

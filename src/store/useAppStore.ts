@@ -108,10 +108,29 @@ export interface TimerState {
   updatedAt: number;
 }
 
-export const PEER_IDS: Record<Role, string> = {
-  USER_A: 'desk-overlay-user-a',
-  USER_B: 'desk-overlay-user-b',
-};
+/**
+ * Peer ids are namespaced by a shared PAIR CODE, not fixed globally.
+ *
+ * They used to be two constants, which meant every install on earth competed for the
+ * same two ids on the public broker: hand the app to anyone else and whoever
+ * launched first held the slot, locking your actual partner out — and they
+ * would have received your notes, tasks and habits on connect. Both people
+ * enter the same code; anyone with a different code is in a different room.
+ */
+export const PAIR_CODE_MAX = 12;
+
+/** Codes are compared after normalising, so case and spacing cannot mismatch. */
+export const normalizeCode = (code: string): string =>
+  code
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .slice(0, PAIR_CODE_MAX);
+
+export const peerIdFor = (code: string, role: Role): string =>
+  `luro-${normalizeCode(code) || 'default'}-${role === 'USER_A' ? 'a' : 'b'}`;
+
+/** Fresh installs get their own room rather than sharing one global pair. */
+const makePairCode = (): string => Math.random().toString(36).slice(2, 8);
 
 export const partnerOf = (role: Role): Role => (role === 'USER_A' ? 'USER_B' : 'USER_A');
 
@@ -159,6 +178,10 @@ export interface AppState {
   myTasks: Task[];
   partnerTasks: Task[];
   habits: HabitBoard;
+  /** Shared room code; both desks must match. */
+  pairCode: string;
+  /** True once a character was picked by hand — unpinned installs auto-claim. */
+  rolePinned: boolean;
   isNightMode: boolean;
   lightingUpdatedAt: number;
   strokes: Stroke[];
@@ -175,6 +198,7 @@ export interface AppState {
 
   initPeer: () => void;
   setRole: (role: Role) => void;
+  setPairCode: (code: string) => void;
   setActiveModal: (modal: ModalType) => void;
 
   setMyNotes: (text: string) => void;
@@ -223,6 +247,8 @@ export const useAppStore = create<AppState>()(
       partnerNotes: '',
       myTasks: [],
       habits: { habits: [], updatedAt: 0 },
+      pairCode: makePairCode(),
+      rolePinned: false,
       partnerTasks: [],
       isNightMode: false,
       lightingUpdatedAt: 0,
@@ -246,9 +272,20 @@ export const useAppStore = create<AppState>()(
       initPeer: () => startEngine(),
 
       setRole: (role) => {
-        if (role === get().role) return;
-        set({ role, connectionStatus: 'DISCONNECTED' });
-        // Re-register on the signalling server under the new static ID.
+        // Picking by hand pins it: this desk will hold that character and keep
+        // retrying rather than auto-swapping to the other one.
+        if (role === get().role) {
+          set({ rolePinned: true });
+          return;
+        }
+        set({ role, rolePinned: true, connectionStatus: 'DISCONNECTED' });
+        createPeer();
+      },
+
+      setPairCode: (code) => {
+        const next = normalizeCode(code);
+        if (next === get().pairCode) return;
+        set({ pairCode: next, connectionStatus: 'DISCONNECTED' });
         createPeer();
       },
 
@@ -459,6 +496,8 @@ export const useAppStore = create<AppState>()(
         myTasks: s.myTasks,
         partnerTasks: s.partnerTasks,
         habits: s.habits,
+        pairCode: s.pairCode,
+        rolePinned: s.rolePinned,
         isNightMode: s.isNightMode,
         lightingUpdatedAt: s.lightingUpdatedAt,
         strokes: s.strokes,
@@ -543,7 +582,7 @@ function createPeer(): void {
   const { role } = useAppStore.getState();
   useAppStore.setState({ connectionStatus: 'CONNECTING' });
 
-  const p = new Peer(PEER_IDS[role], { debug: 0 });
+  const p = new Peer(peerIdFor(useAppStore.getState().pairCode, role), { debug: 0 });
   peer = p;
 
   p.on('open', () => {
@@ -567,8 +606,17 @@ function createPeer(): void {
   p.on('error', (err) => {
     const type = (err as { type?: string }).type;
     if (type === 'unavailable-id') {
-      // Another instance holds our static ID (both desks set the same role).
+      const { rolePinned, role } = useAppStore.getState();
       useAppStore.setState({ connectionStatus: 'DISCONNECTED' });
+      // A desk that has never chosen a character claims one: it asks for Lulu
+      // first and takes Roro if Lulu is already held, so the second install to
+      // start pairs up on its own with nobody touching a setting. Picking by
+      // hand pins the choice, and a pinned desk waits for its own id instead.
+      if (!rolePinned && role === 'USER_A') {
+        useAppStore.setState({ role: 'USER_B' });
+        if (peer === p) createPeer();
+        return;
+      }
       recreateTimer = setTimeout(() => {
         if (peer === p) createPeer();
       }, 6000);
@@ -581,8 +629,8 @@ function createPeer(): void {
 function tryConnect(): void {
   if (!peer || peer.destroyed || !peer.open) return;
   if ([...conns].some((c) => c.open)) return;
-  const { role } = useAppStore.getState();
-  wireConnection(peer.connect(PEER_IDS[partnerOf(role)], { reliable: true }));
+  const { role, pairCode } = useAppStore.getState();
+  wireConnection(peer.connect(peerIdFor(pairCode, partnerOf(role)), { reliable: true }));
 }
 
 function refreshStatus(): void {
