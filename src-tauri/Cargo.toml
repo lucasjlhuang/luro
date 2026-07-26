@@ -1,6 +1,6 @@
 [package]
 name = "luro"
-version = "0.1.0"
+version = "0.1.1"
 description = "Collaborative 3D isometric shared desk"
 authors = ["you"]
 edition = "2021"
