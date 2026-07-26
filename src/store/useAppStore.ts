@@ -59,7 +59,6 @@ export interface Task {
  * new checkbox wired up by hand.
  */
 export const ACCESSORIES = [
-  { key: 'glasses', label: 'Glasses' },
   { key: 'hat', label: 'Hat' },
   { key: 'cape', label: 'Cape' },
   { key: 'staff', label: 'Staff (at work)' },
@@ -93,7 +92,7 @@ const DEFAULT_APPEARANCE: Record<Role, Appearance> = {
     freckles: true,
     blush: false,
     pattern: 'none',
-    accessories: { glasses: false, hat: false, cape: false, staff: true },
+    accessories: { hat: false, cape: false, staff: true },
   },
   USER_B: {
     hairTop: '#4A250C',
@@ -104,7 +103,7 @@ const DEFAULT_APPEARANCE: Record<Role, Appearance> = {
     freckles: false,
     blush: true,
     pattern: 'flowers',
-    accessories: { glasses: false, hat: false, cape: false, staff: true },
+    accessories: { hat: false, cape: false, staff: true },
   },
 };
 

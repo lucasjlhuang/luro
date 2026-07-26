@@ -323,62 +323,6 @@ function buildLook(role: Role, a: Appearance): Look {
   };
 }
 
-/* ---------------------------- accessories ---------------------------- */
-
-/**
- * Rectangular wire glasses, built procedurally and parented to the HEAD BONE so
- * they follow every animation for free — no per-frame bookkeeping.
- *
- * Sizes come from the eyes mesh (x +/-0.195, y 0.571..0.813, front face at
- * z -0.254), all in the model's own space. Placement converts that target into
- * the bone's local space using the bind-pose matrices, which is why this must
- * run before the mixer has touched anything.
- */
-function buildGlasses(): THREE.Group {
-  const g = new THREE.Group();
-  const frame = new THREE.MeshStandardMaterial({
-    color: '#141414',
-    roughness: 0.35,
-    metalness: 0.45,
-  });
-
-  const LENS_W = 0.145;
-  const LENS_H = 0.085;
-  const BAR = 0.011; // frames are skinny
-
-  const lens = (cx: number) => {
-    // four thin bars per lens: a rectangle, not a ring
-    const parts: Array<[number, number, number, number]> = [
-      [cx, LENS_H / 2, LENS_W, BAR],
-      [cx, -LENS_H / 2, LENS_W, BAR],
-      [cx - LENS_W / 2, 0, BAR, LENS_H + BAR],
-      [cx + LENS_W / 2, 0, BAR, LENS_H + BAR],
-    ];
-    for (const [x, y, w, h] of parts) {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, BAR), frame);
-      m.position.set(x, y, 0);
-      m.castShadow = true;
-      g.add(m);
-    }
-  };
-  lens(-LENS_W / 2 - 0.016);
-  lens(LENS_W / 2 + 0.016);
-
-  // bridge
-  const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.032, BAR, BAR), frame);
-  g.add(bridge);
-
-  // temples, angled back toward the ears
-  for (const side of [-1, 1]) {
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(BAR, BAR, 0.17), frame);
-    arm.position.set(side * (LENS_W + 0.024), 0.012, 0.085);
-    arm.rotation.y = side * 0.12;
-    arm.castShadow = true;
-    g.add(arm);
-  }
-  return g;
-}
-
 /* ------------------------- texture repainting ------------------------- */
 
 /**
@@ -1294,23 +1238,6 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
       if (obj instanceof THREE.SkinnedMesh) skinned.push(obj);
     });
 
-    /* Glasses ride on the head bone. The target sits in MODEL space (just in
-     * front of the eyes), so convert it into the bone's local space using the
-     * bind-pose matrices — valid here because nothing has animated the clone
-     * yet. Parenting means the animation carries them; no frame loop needed. */
-    if (head && custom.accessories?.glasses) {
-      const bone = head as THREE.Object3D;
-      scene.updateMatrixWorld(true);
-      const glasses = buildGlasses();
-      const target = new THREE.Vector3(0, 0.7, -0.262); // eyes centre, a hair proud
-      bone.worldToLocal(target);
-      glasses.position.copy(target);
-      // undo the bone's own bind rotation so the frames face straight forward
-      const q = new THREE.Quaternion();
-      bone.getWorldQuaternion(q);
-      glasses.quaternion.copy(q.invert());
-      bone.add(glasses);
-    }
 
     return {
       scale,
