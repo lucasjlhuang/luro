@@ -48,6 +48,87 @@ const CUSTOMIZE: Record<Role, { hide: string[]; recolor: Record<string, string> 
   },
 };
 
+/*
+ * Why recoloring this pack needs more than `material.color`:
+ *
+ * every material in roro.glb is FULLBRIGHT — baseColorFactor is pure black,
+ * specularFactor 0, and all the visible colour lives in an emissive map with
+ * emissiveFactor white. What you see is `emissive * emissiveMap`, so tinting
+ * `.color` multiplies black by black and changes nothing (this is why the
+ * hair stayed white).
+ *
+ * Tinting `.emissive` works, but a flat multiply inherits the map's own cast:
+ * the hair map is pale BLUE-white (linear mean ~0.30/0.43/0.76), so brown
+ * would come out blue-black. So divide the target by the map's per-channel
+ * mean — the multiply then reproduces the requested colour on average while
+ * keeping the baked shading gradient.
+ */
+const TINT_CLAMP = 8;
+const meanCache = new WeakMap<THREE.Texture, THREE.Color | null>();
+
+/** Average lit texel of a texture, in linear space. Null if unreadable. */
+function textureMean(tex: THREE.Texture): THREE.Color | null {
+  if (meanCache.has(tex)) return meanCache.get(tex) ?? null;
+  let mean: THREE.Color | null = null;
+  try {
+    const img = tex.image as CanvasImageSource & { width?: number; height?: number };
+    if (img?.width && img?.height) {
+      const S = 64; // the average is all we need — downsample hard
+      const canvas = document.createElement('canvas');
+      canvas.width = S;
+      canvas.height = S;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, S, S);
+        const { data } = ctx.getImageData(0, 0, S, S);
+        const lin = (v: number) => {
+          const c = v / 255;
+          return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+        };
+        let n = 0;
+        let r = 0;
+        let g = 0;
+        let b = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          // skip the unused UV gutter, which is transparent or black
+          if (data[i + 3] < 8 || data[i] + data[i + 1] + data[i + 2] < 12) continue;
+          n += 1;
+          r += lin(data[i]);
+          g += lin(data[i + 1]);
+          b += lin(data[i + 2]);
+        }
+        if (n) mean = new THREE.Color(r / n, g / n, b / n); // numeric ctor = working (linear) space
+      }
+    }
+  } catch {
+    mean = null; // tainted canvas / undecoded image — caller falls back
+  }
+  meanCache.set(tex, mean);
+  return mean;
+}
+
+/** Paint `hex` onto a material, whichever channel actually shows. */
+function tintMaterial(mat: THREE.Material, hex: string): void {
+  const m = mat as THREE.Material & {
+    color?: THREE.Color;
+    emissive?: THREE.Color;
+    emissiveMap?: THREE.Texture | null;
+  };
+  const target = new THREE.Color(hex); // hex string -> converted to linear
+  const fullbright = m.emissive && (!m.color || m.color.getHex() === 0x000000);
+  if (!fullbright) {
+    m.color?.set(hex); // ordinary PBR model (e.g. a future lulu.glb)
+    return;
+  }
+  const mean = m.emissiveMap ? textureMean(m.emissiveMap) : null;
+  if (!mean) {
+    m.emissive!.copy(target);
+    return;
+  }
+  const norm = (t: number, avg: number) => Math.min(t / Math.max(avg, 1e-3), TINT_CLAMP);
+  m.emissive!.setRGB(norm(target.r, mean.r), norm(target.g, mean.g), norm(target.b, mean.b));
+}
+
 /** Clip names inside roro.glb, mapped to app states. */
 const CLIPS = {
   idle: 'Armatureidle_necromancer',
@@ -388,14 +469,13 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
         obj.visible = false;
         return;
       }
-      // Tint any material exposing a colour channel — Sketchfab-era
-      // exports can load as custom material classes, so no instanceof.
+      // Loose name match, then tint whichever channel is actually visible
+      // (see tintMaterial — this pack is emissive-only, not colour-driven).
       const recolorOne = (mat: THREE.Material): THREE.Material => {
         for (const [key, hex] of Object.entries(custom.recolor)) {
           if (matches(mat.name, key) || matches(obj.name, key)) {
             const clone = mat.clone();
-            const tintable = clone as THREE.Material & { color?: THREE.Color };
-            if (tintable.color) tintable.color.set(hex);
+            tintMaterial(clone, hex);
             return clone;
           }
         }

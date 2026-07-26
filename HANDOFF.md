@@ -19,7 +19,8 @@ back; expect blind-tuning loops ("move it 25px left").
 ## Working conventions
 
 - Every accepted change: `npm run build` → `git add -A && git commit` (end commit
-  message with `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`).
+  message with a `Co-Authored-By:` trailer naming the model actually doing the
+  work, e.g. `Claude Opus 5 <noreply@anthropic.com>` — early commits say Fable 5).
 - Screen-px ↔ world: ortho zoom = 45 px/unit. screen-right = world (0.707, 0,
   −0.707); screen-down = (0.707, 0, 0.707); right+down equally = pure +x.
 - The user gives exact-pixel/degree tweaks; implement literally, offer the dial.
@@ -96,12 +97,22 @@ share it via `SkeletonUtils.clone` (three-stdlib) until the user provides
   recolors by loose material/mesh name match, material CLONED per instance.
   Roro: hair #a8815a, robes `outfit_body` #cfe8b5, boots `outfit_boots` #f28bb4.
   Lulu stand-in: hair #3b2a1d only.
-- **UNRESOLVED (last exchange):** hair rendered WHITE despite recolor. Fixed the
-  likely cause (strict `instanceof MeshStandardMaterial` skipped Sketchfab
-  spec-gloss custom material class → now tints any material with `.color`, loose
-  name match, arrays handled) but USER HAS NOT CONFIRMED. If still white: the white
-  comes from a hair TEXTURE dominating the tint → next step is repainting/stripping
-  that texture's pixels at load (canvas-process the image), not the color factor.
+- **Hair-colour saga — root cause found (awaiting visual confirm):** the pack is
+  FULLBRIGHT. Every material has `baseColorFactor` pure black, `specularFactor` 0,
+  and all colour in an **emissive map** with `emissiveFactor` white — so what you
+  see is `emissive * emissiveMap` and tinting `.color` is a no-op (black × black).
+  That, not a material subclass, is why two rounds of `.color` fixes did nothing.
+  `tintMaterial()` now detects fullbright materials (emissive + black color) and
+  tints `emissive` instead. It also NORMALISES: the hair map is pale blue-white
+  (linear mean 0.30/0.43/0.76), so a flat multiply would render brown as
+  blue-black — the target hex is divided by the map's per-channel mean
+  (`textureMean`, 64×64 canvas downsample, WeakMap-cached, skips the transparent/
+  black UV gutter), so the average texel lands ON the requested colour while the
+  baked shading gradient survives. Non-fullbright materials still take the
+  `.color` path, so a future `lulu.glb` with ordinary PBR just works.
+  Side effect to watch: `outfit_body` (#cfe8b5) and `outfit_boots` (#f28bb4) were
+  silently no-ops before and now actually change — if the user liked the original
+  robes, drop those two keys from `CUSTOMIZE.USER_B`, don't revert the commit.
 - Known cosmetic gap: working = standing (no sit clip); user accepted for now.
   Chair choice on drop isn't synced (partner sees your status at their default
   chair anchor) — cosmetic.
@@ -127,6 +138,11 @@ share it via `SkeletonUtils.clone` (three-stdlib) until the user provides
 7. drei `Html` overlays need `data-interactive` to be clickable through the
    pass-through poller; `pointerEvents: 'none'` + no data-attr for pure visuals.
 8. Binary asset swaps don't HMR — full app reload needed to see new GLB bytes.
+9. Before debugging a recolor, DUMP THE GLB JSON (`node` + read the 20-byte header,
+   `readUInt32LE(12)` = JSON chunk length) and look at `baseColorFactor` /
+   `emissiveTexture`. Fullbright exports (black base + emissive map) ignore
+   `.color` entirely. Textures here are `EXT_texture_webp`; extract a bufferView
+   and `sips -s format png` to eyeball one.
 
 ## Assets & licenses (README has full credits)
 
