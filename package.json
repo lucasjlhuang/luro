@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "release": "TAURI_SIGNING_PRIVATE_KEY=\"$(cat $HOME/.tauri/luro.key)\" TAURI_SIGNING_PRIVATE_KEY_PASSWORD= tauri build && ./scripts/install-local.sh"
+    "release": "TAURI_SIGNING_PRIVATE_KEY=\"$(cat $HOME/.tauri/luro.key)\" TAURI_SIGNING_PRIVATE_KEY_PASSWORD= tauri build && ./scripts/install-local.sh",
+    "bump": "./scripts/bump-version.sh"
   },
   "dependencies": {
     "@fontsource/instrument-sans": "^5.3.0",
