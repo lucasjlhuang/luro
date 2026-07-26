@@ -33,7 +33,11 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "app",
+      "dmg",
+      "nsis"
+    ],
     "category": "Productivity",
     "shortDescription": "Shared always-on-top desk for two",
     "longDescription": "A collaborative, transparent, always-on-top desktop overlay: a shared isometric room with a notebook, corkboard, whiteboard, pomodoro timer, habit tracker and two characters, synced peer-to-peer between two desks.",
