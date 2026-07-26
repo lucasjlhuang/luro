@@ -316,8 +316,10 @@ atlas per triangle) is what identified the sash vs the hem in the first place.
 
 ## Assets & licenses (README has full credits)
 
-- `roro.glb` / `lulu.glb` — user-supplied characters (license unknown; personal
-  use). Sources kept at `~/Desktop/models/characters/`.
+- `roro.glb` / `lulu.glb` — characters by sema.game.studio on Sketchfab
+  (https://sketchfab.com/sema.game.studio), credited in the README. Sources
+  kept at `~/Desktop/models/characters/`. NOTE: the exact licence was never
+  confirmed against the store page; the user chose to publish on that basis.
 - `djungelskog.glb` — bear on bed, CC-BY-NC (Arkify 3D), matte, brightness 2,
   rotY = 0.85 + 165°·π/180, pos [-0.45, 0.84, -0.46] inside Bed group.
 - Wii cursors (user-supplied PNGs), Instrument Sans via @fontsource.

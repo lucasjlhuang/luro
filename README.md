@@ -89,9 +89,12 @@ Icons are generated from `src-tauri/app-icon.png` with `npx tauri icon src-tauri
 
 ## Asset credits
 
-Decor models from Sketchfab, bundled as compressed GLB (the bear decimated
-from a 1.3M-triangle scan). This project is personal and non-commercial.
+Models from Sketchfab, bundled as compressed GLB (the bear decimated from a 1.3M-triangle scan).
+This project is personal and non-commercial.
 
+- Lulu and Roro character models by
+  [sema.game.studio](https://sketchfab.com/sema.game.studio) — `src/assets/models/lulu.glb`
+  and `roro.glb`
 - "Chunky Djungelskog Bear" by [Arkify 3D](https://sketchfab.com/arkify) — CC-BY-NC-4.0
   — https://sketchfab.com/3d-models/chunky-djungelskog-bear-a865f0ac929c4cfc88ff270f7bf18c43
 
