@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "release": "tauri build && ./scripts/install-local.sh"
   },
   "dependencies": {
     "@fontsource/instrument-sans": "^5.3.0",

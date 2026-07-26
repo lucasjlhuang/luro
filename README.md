@@ -23,6 +23,11 @@ npm run tauri build
 Output lands in `src-tauri/target/release/bundle/` — `.app` and `.dmg` on macOS, `.msi` and an
 NSIS `.exe` on Windows.
 
+`npm run release` (macOS) does the same build and then replaces `/Applications/luro.app` with it,
+so the installed copy is never a stale snapshot. Note that a packaged app is always a build
+artifact — the frontend is compiled into the binary, so it only changes when you rebuild. For
+live reload while working, use `npm run tauri dev`.
+
 **Tauri builds only for the platform it runs on.** A Windows `.exe` cannot be produced from a
 Mac (it needs the MSVC toolchain and WebView2), so `.github/workflows/release.yml` builds both:
 push a tag (`git tag v0.1.0 && git push origin v0.1.0`) or run the workflow by hand from the
