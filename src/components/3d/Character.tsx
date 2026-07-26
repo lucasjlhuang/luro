@@ -33,6 +33,13 @@ import luluUrl from '../../assets/models/lulu.glb?url';
 interface ModelSpec {
   url: string;
   yaw: number;
+  /**
+   * Yaw used while lying in bed. The two packs' death clips fall in OPPOSITE
+   * directions — measured at the final frame, Roro's head ends at model z
+   * +0.53 and Lulu's at -0.555 — so a single value lands one of them head-down
+   * at the foot of the bed. These two put both heads on the pillows.
+   */
+  sleepYaw: number;
   clips: { idle: string; walk: string; work: string; sleep: string; carry: string };
   neverRandom: string[];
 }
@@ -49,6 +56,7 @@ const MODELS: Record<Role, ModelSpec> = {
   USER_A: {
     url: luluUrl,
     yaw: Math.PI, // the source model faces -z, so add a half turn
+    sleepYaw: (3 * Math.PI) / 2, // he falls the other way; head to x -1.14
     clips: {
       idle: 'Armatureidle_mage',
       walk: 'Armaturerun_mage',
@@ -70,6 +78,7 @@ const MODELS: Record<Role, ModelSpec> = {
   USER_B: {
     url: roroUrl,
     yaw: Math.PI,
+    sleepYaw: Math.PI / 2, // head to x -1.10
     clips: {
       idle: 'Armatureidle_necromancer',
       walk: 'Armaturerun_necromancer',
@@ -142,19 +151,22 @@ const SASH_BAND: [number, number] = [0.5, 0.72];
  * and how to repaint the rest. Materials are cloned per instance so the two
  * roles can differ despite sharing one GLB.
  */
-const CUSTOMIZE: Record<Role, { gear: string[]; paint: Record<string, Band[]> }> = {
+const CUSTOMIZE: Record<Role, { hide: string[]; gear: string[]; paint: Record<string, Band[]> }> = {
+  // `hide` is permanent (the hood covers the real hair mesh underneath).
   // `gear` = worn only on the job: hidden while idling, roaming, carried or in
-  // bed, and shown while WORKING. It is also excluded from the height fit, so
-  // putting the hat on never changes how big the character is.
+  // bed, shown while WORKING. Both are excluded from the height fit, so gear
+  // can never change how big the character is.
   USER_A: {
-    gear: ['outfit_hat', 'weapon', 'outfit_cloak'], // hat, staff, cape
+    hide: ['outfit_hat'],
+    gear: ['weapon', 'outfit_cloak'], // staff + cape
     paint: {
       skin_hair: [{ to: '#1A120B' }], // dark brown, near black
       skin_eyes: [{ match: (_h, s) => s >= 0.25, to: '#A8763E' }], // hazel brown
     },
   },
   USER_B: {
-    gear: ['outfit_hat', 'weapon'], // no cape mesh in this pack
+    hide: ['outfit_hat'],
+    gear: ['weapon'], // no cape mesh in this pack
     paint: {
       skin_hair: [{ to: '#893718' }], // light brown
       outfit_body: [
@@ -447,7 +459,11 @@ function flourishesFrom(clips: THREE.AnimationClip[], model: ModelSpec): string[
 const EXTRA_CHANCE = 0.45;
 
 const WALK_SPEED = 1.05;
-const LIE_RAISE = 0.88; // onto the mattress top
+/* Standing heights, in world units. The floor planks sit ON the slab, so their
+ * top face — not y=0 — is where feet belong. */
+const FLOOR_Y = 0.07; // plank top: boxes 0.1 tall centred at y 0.02
+const CHAIR_SEAT_Y = 0.63; // seat top 0.565 * chair scale 1.12
+const BED_Y = 0.88; // mattress top (absolute, not an offset from the floor)
 const TELE_OUT = 0.25;
 const TELE_IN = 0.3;
 const BUBBLE_HOLD = 5_000; // fully visible
@@ -802,6 +818,10 @@ interface SimState {
   tele: Tele;
   teleT: number;
   dragging: boolean;
+  /** Damped standing height: floor planks, chair seat or mattress. */
+  stand: number;
+  /** Seconds left of re-measuring skinned bounds after a pose change. */
+  poseSettle: number;
   /** Which chair to work at — set by dropping the villager on one. */
   chairX: number;
 }
@@ -853,11 +873,14 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     const custom = CUSTOMIZE[role];
     const matches = (name: string, key: string) =>
       name.toLowerCase().includes(key.toLowerCase());
-    const isGear = (obj: THREE.Mesh) => {
+    const namesOf = (obj: THREE.Mesh) => {
       const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-      const names = [obj.name, ...mats.map((m) => m.name)];
-      return custom.gear.some((g) => names.some((n) => matches(n, g)));
+      return [obj.name, ...mats.map((m) => m.name)];
     };
+    const isGear = (obj: THREE.Mesh) =>
+      custom.gear.some((g) => namesOf(obj).some((n) => matches(n, g)));
+    const isHidden = (obj: THREE.Mesh) =>
+      custom.hide.some((h) => namesOf(obj).some((n) => matches(n, h)));
 
     // Measure the SOURCE scene, not the animated clone: a SkinnedMesh's bounds
     // follow its current pose, so measuring the clone made the character
@@ -865,7 +888,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     // which is exactly what swapping characters in the settings menu did. The
     // source is never animated, so it always reads the bind pose. Gear is
     // excluded so putting the hat on can't change the size either.
-    const box = computeSceneBox(srcScene, isGear);
+    const box = computeSceneBox(srcScene, (m) => isGear(m) || isHidden(m));
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
     const scale = CHAR_HEIGHT / Math.max(size.y, 1e-6);
@@ -875,6 +898,10 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
       if (!(obj instanceof THREE.Mesh)) return;
       obj.castShadow = true;
       obj.frustumCulled = false; // skinned bounds are wrong mid-clip
+      if (isHidden(obj)) {
+        obj.visible = false;
+        return;
+      }
       if (isGear(obj)) {
         gear.push(obj);
         obj.visible = false; // shown again only while WORKING
@@ -894,7 +921,28 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
       };
       obj.material = Array.isArray(obj.material) ? mats.map(paintOne) : paintOne(mats[0]);
     });
-    return { scale, offset: [-center.x, -box.min.y, -center.z] as const, gear };
+    // The head bone drives the Zzz and the speech bubble. Reading it live
+    // beats a per-model offset: each pack's sleep clip ends in a different
+    // pose, so a constant that suits one model puts the other's Zzz in midair.
+    let head: THREE.Object3D | null = null;
+    scene.traverse((obj) => {
+      if (head) return;
+      if (/head\.head/i.test(obj.name)) head = obj;
+    });
+    if (!head) scene.traverse((obj) => { if (!head && /head/i.test(obj.name)) head = obj; });
+
+    const skinned: THREE.SkinnedMesh[] = [];
+    scene.traverse((obj) => {
+      if (obj instanceof THREE.SkinnedMesh) skinned.push(obj);
+    });
+
+    return {
+      scale,
+      offset: [-center.x, -box.min.y, -center.z] as const,
+      gear,
+      head: head as THREE.Object3D | null,
+      skinned,
+    };
   }, [scene, srcScene, role]);
 
   /** Flourish pool, derived from whatever clips this model actually ships. */
@@ -981,6 +1029,8 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     tele: 'none',
     teleT: 0,
     dragging: false,
+    stand: FLOOR_Y,
+    poseSettle: 2.5,
     chairX: spots.chairX,
   });
 
@@ -995,10 +1045,10 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
   /** Anchor position + pose for a posed status; waypoint (or the live
    *  streamed position for the partner) for IDLE. */
   const destinationFor = (st: CharacterStatus, s: SimState, remote: CharPos | null) => {
-    // No sit clip in this pack: "working" stands at the desk casting.
-    if (st === 'WORKING') return { x: s.chairX, z: -1.5, yaw: Math.PI };
-    // +PI/2 so the bed pose nets out unchanged under the model's half turn.
-    if (st === 'SLEEPING') return { x: -0.55, z: spots.lieZ, yaw: Math.PI / 2 };
+    // No sit clip in either pack, so "working" stands ON the chair seat
+    // (CHAIR_SEAT_Y) rather than clipping through it from behind.
+    if (st === 'WORKING') return { x: s.chairX, z: CHAIR_Z, yaw: Math.PI };
+    if (st === 'SLEEPING') return { x: -0.55, z: spots.lieZ, yaw: model.sleepYaw };
     if (remote) return { x: remote.x, z: remote.z, yaw: remote.yaw as number | null };
     const wp = WAYPOINTS[s.wp % WAYPOINTS.length];
     return { x: wp[0], z: wp[1], yaw: null as number | null };
@@ -1079,6 +1129,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     if (s.status !== status) {
       s.status = status;
       s.dwell = 0;
+      s.poseSettle = 2.5; // re-measure skinned bounds while the new pose lands
       extraPlaying.current = null;
       if (!s.dragging) {
         s.tele = 'out';
@@ -1218,10 +1269,31 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     /* ---------- root transform ---------- */
     const lieE = THREE.MathUtils.smoothstep(s.lie, 0, 1);
     const carryY = carried ? CARRY_LIFT + Math.sin(t * 3) * 0.03 : 0;
-    root.current.position.set(s.x, carryY + lieE * LIE_RAISE, s.z);
+    // Feet land on the planks, on the chair seat while working, on the
+    // mattress once lying. Damped so the change can't pop.
+    const standTarget = status === 'WORKING' && !s.dragging ? CHAIR_SEAT_Y : FLOOR_Y;
+    s.stand = damp(s.stand, standTarget, 10);
+    root.current.position.set(s.x, carryY + THREE.MathUtils.lerp(s.stand, BED_Y, lieE), s.z);
     qStand.setFromAxisAngle(Y_AXIS, s.yaw + model.yaw);
     root.current.quaternion.copy(qStand);
     root.current.scale.setScalar(Math.max(0.001, s.scale));
+    // Push the new transform down the skeleton before anything reads a bone.
+    root.current.updateMatrixWorld(true);
+
+    /* ---------- keep hit-testing honest across poses ----------
+     * A SkinnedMesh raycast starts with a bounding-sphere test, and that sphere
+     * is computed once, lazily, in whatever pose the character happened to be
+     * in. Lying down puts most of the body outside a sphere measured standing,
+     * which is why a sleeping character could not be grabbed. Recompute while
+     * the pose is still settling after any status change (armed above, where
+     * the status actually changes — s.status is already synced by this point). */
+    if (s.poseSettle > 0) {
+      s.poseSettle -= dt;
+      fitted.skinned.forEach((m) => {
+        m.computeBoundingSphere();
+        m.computeBoundingBox();
+      });
+    }
 
     // carried protest: rock the whole body
     const rock = carried ? Math.sin(t * 8) * 0.14 : 0;
@@ -1257,16 +1329,23 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
       asleep ? 0.55 + Math.sin(t * 1.8) * 0.25 : 0,
       6
     );
-    zzz.current.position.set(s.x - 0.55, 1.5 + Math.sin(t * 1.2) * 0.06, s.z);
+    // Anchor to the actual head bone so the Zzz follows whatever pose the
+    // pack's sleep clip ends in, rather than a hardcoded standing offset.
+    if (fitted.head) fitted.head.getWorldPosition(TMP_VEC);
+    else TMP_VEC.set(s.x, root.current.position.y + HEAD_TOP, s.z);
+    zzz.current.position.set(
+      TMP_VEC.x - 0.3,
+      TMP_VEC.y + 0.34 + Math.sin(t * 1.2) * 0.06,
+      TMP_VEC.z
+    );
     zzz.current.quaternion.copy(frame.camera.quaternion);
 
     /* ---------- overhead anchor (speech bubbles) ---------- */
     if (overheadAnchor.current) {
-      overheadAnchor.current.position.set(
-        s.x - lieE * 0.5,
-        root.current.position.y + (1 - lieE) * HEAD_TOP + lieE * 0.3,
-        s.z
-      );
+      // Same head bone as the Zzz — correct for both packs in every pose.
+      if (fitted.head) fitted.head.getWorldPosition(TMP_VEC);
+      else TMP_VEC.set(s.x, root.current.position.y + HEAD_TOP, s.z);
+      overheadAnchor.current.position.set(TMP_VEC.x, TMP_VEC.y + 0.26, TMP_VEC.z);
     }
   });
 

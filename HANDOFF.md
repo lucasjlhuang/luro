@@ -100,11 +100,12 @@ no longer a global CLIPS const.
   - Lulu pool: attack, blocking_loop, buff, gathering, get_hit, jump,
     run_attack, run_back. (blocking_loop was excluded for Roro but NOT listed
     for Lulu — user's list, left as given.)
-- **Work gear** (`CUSTOMIZE.gear`, loose substring match on mesh AND material
-  names): `outfit_hat` + `weapon` for both, plus `outfit_cloak` for Lulu.
-  Visible ONLY while WORKING (not dragged, not mid-teleport); hidden when
-  idling, roaming, carried or in bed. Gear is also excluded from the height fit,
-  so putting the hat on cannot change the character's size.
+- `CUSTOMIZE.hide` is permanent (`outfit_hat` for both — the hood covers the
+  real hair mesh; the user explicitly does NOT want hats at work either).
+- **Work gear** (`CUSTOMIZE.gear`): `weapon` for both, plus `outfit_cloak` for
+  Lulu. Visible ONLY while WORKING (not dragged, not mid-teleport); hidden when
+  idling, roaming, carried or in bed. Both hide and gear are excluded from the
+  height fit, so gear can never change the character's size.
 - **Size is fixed and identical for both**: `CHAR_HEIGHT` 1.27 = the chairs'
   height (back top 1.133 x scale 1.12). `HEAD_TOP` is tied to it.
 - The old resize/drift-on-character-swap bug: `computeSceneBox` was measuring
@@ -143,6 +144,27 @@ no longer a global CLIPS const.
   anchor).
 - Model yaw = pi for both (sources face -z). If Lulu ends up facing backwards,
   that is the dial.
+- **Standing heights** (all absolute world y): `FLOOR_Y` 0.07 is the top of the
+  floor PLANKS (0.1-tall boxes centred at y 0.02) — not the slab at y 0, which
+  is why feet used to sink into the boards. `CHAIR_SEAT_Y` 0.63 (seat top 0.565
+  x chair scale 1.12) — working stands ON the seat at [chairX, CHAIR_Z], since
+  neither pack has a sit clip and standing behind it clipped through the chair.
+  `BED_Y` 0.88 is the mattress. `s.stand` damps between them.
+- **The two packs' sleep clips fall in OPPOSITE directions.** Measured at the
+  final frame: Roro's head ends at model z +0.53, Lulu's at -0.555. With one
+  shared yaw, Lulu ended up head-down at the FOOT of the bed. `ModelSpec.
+  sleepYaw` fixes it — pi/2 for Roro, 3pi/2 for Lulu — putting both heads near
+  the pillows (world x -1.10 and -1.14).
+- **The Zzz and the speech bubble follow the HEAD BONE** (`Head.head.001_*`,
+  same name in both packs), read live via `getWorldPosition` after
+  `root.updateMatrixWorld(true)`. Do not go back to a constant offset: each
+  pack's sleep pose ends somewhere different, so any constant is wrong for one
+  of them.
+- **Grabbing a sleeping character** used to miss. A SkinnedMesh raycast starts
+  with a bounding-sphere test, and that sphere is computed ONCE, lazily, in
+  whatever pose the mesh was in — a body lying down falls largely outside a
+  sphere measured standing. `s.poseSettle` re-measures the skinned bounds for
+  2.5s after every status change.
 
 ### Recolouring: how it actually works
 
