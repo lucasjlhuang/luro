@@ -89,6 +89,8 @@ from a 1.3M-triangle scan). This project is personal and non-commercial.
   strict/symmetric NAT may fail to establish a data channel even though both show CONNECTING.
 - `macOSPrivateApi` is required for the transparent window and makes the app ineligible for the
   Mac App Store. Not an issue for direct distribution.
-- The CSP in `tauri.conf.json` allows only `self` plus the PeerJS broker. If a future change
-  fetches from anywhere else it will be blocked — widen `connect-src`, or set `"csp": null` to
-  rule CSP out while debugging.
+- The CSP in `tauri.conf.json` allows only `self`, `blob:`/`data:` and the PeerJS broker. If a
+  future change fetches from anywhere else it will be blocked — widen `connect-src`, or set
+  `"csp": null` to rule CSP out while debugging. `blob:` in `connect-src` is load-bearing: three
+  fetches GLB textures through blob URLs, so dropping it renders every model white. CSP problems
+  never show up in `tauri dev`, only in a packaged build.

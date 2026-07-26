@@ -300,10 +300,18 @@ atlas per triangle) is what identified the sash vs the hem in the first place.
   USER_B on `unavailable-id`. Choosing by hand sets `rolePinned` and the desk
   then waits for its own id instead of swapping. Known gap: auto-claim is
   first-come, so if the partner's desk boots first it takes Lulu.
-- CSP is now set (was null). It allows `self` plus the PeerJS broker only. It
-  is the highest-risk item in the packaging pass because a mistake here shows
-  up only at runtime — if the packaged app boots blank or cannot connect, set
-  `"csp": null` to rule it out before looking anywhere else.
+- CSP is set (was null), and it bit once already. **`connect-src` MUST include
+  `blob:`.** GLTFLoader turns every texture embedded in a GLB into a `blob:`
+  URL, and on WKWebView (Safari >= 17) three loads it with `ImageBitmapLoader`,
+  which uses `fetch()` — so it is policed by `connect-src`, NOT `img-src`.
+  Without it the meshes load but every texture is blocked, and because this
+  pack is fullbright (emissive white, no map) the characters and the bear
+  render PURE WHITE. The giveaway is that repainted parts (hair, dress) still
+  look right: `paintMaterial` falls back to a flat emissive tint when it cannot
+  read the source image.
+- CSP failures only appear in a packaged build, never in `tauri dev`. If the
+  app boots blank, loses textures or cannot connect, set `"csp": null` to rule
+  CSP out before looking anywhere else.
 - Not code-signed: macOS needs right-click -> Open, Windows "Run anyway".
 
 ## Assets & licenses (README has full credits)
