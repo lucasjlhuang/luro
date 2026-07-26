@@ -1536,34 +1536,41 @@ function LaundryBasket({ position }: { position: [number, number, number] }) {
   const setActiveModal = useAppStore((s) => s.setActiveModal);
   return (
     <Interactive position={position} onSelect={() => setActiveModal('WARDROBE')}>
-      {() => (
-        <group>
-      <mesh position={[0, 0.38, 0]} castShadow>
-        <cylinderGeometry args={[0.42, 0.34, 0.76, 24]} />
-        <meshStandardMaterial color={P.creamSoft} {...CLAY} />
-      </mesh>
-      {/* weave rings following the taper */}
-      {[0.18, 0.38, 0.58].map((y, i) => (
-        <mesh key={y} position={[0, y, 0]} rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[0.36 + i * 0.028, 0.018, 10, 32]} />
-          <meshStandardMaterial color={P.woodMid} {...CLAY} />
-        </mesh>
-      ))}
-      <mesh position={[0, 0.76, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.42, 0.035, 10, 32]} />
-        <meshStandardMaterial color={P.woodTrim} {...CLAY} />
-      </mesh>
-      {/* laundry poking out */}
-      <mesh position={[0.12, 0.8, 0.06]} scale={[1, 0.6, 1]} castShadow>
-        <sphereGeometry args={[0.17, 16, 16]} />
-        <meshStandardMaterial color={P.white} {...CLAY} />
-      </mesh>
-          <mesh position={[-0.13, 0.78, -0.07]} scale={[1, 0.55, 1]} castShadow>
-            <sphereGeometry args={[0.14, 16, 16]} />
-            <meshStandardMaterial color={P.teal} {...CLAY} />
-          </mesh>
-        </group>
-      )}
+      {(hovered) => {
+        // same hover glow the other openable props use
+        const glow = {
+          emissive: hovered ? '#ffcf8a' : '#000000',
+          emissiveIntensity: 0.35,
+        };
+        return (
+          <group>
+            <mesh position={[0, 0.38, 0]} castShadow>
+              <cylinderGeometry args={[0.42, 0.34, 0.76, 24]} />
+              <meshStandardMaterial color={P.creamSoft} {...CLAY} {...glow} />
+            </mesh>
+            {/* weave rings following the taper */}
+            {[0.18, 0.38, 0.58].map((y, i) => (
+              <mesh key={y} position={[0, y, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                <torusGeometry args={[0.36 + i * 0.028, 0.018, 10, 32]} />
+                <meshStandardMaterial color={P.woodMid} {...CLAY} {...glow} />
+              </mesh>
+            ))}
+            <mesh position={[0, 0.76, 0]} rotation={[Math.PI / 2, 0, 0]}>
+              <torusGeometry args={[0.42, 0.035, 10, 32]} />
+              <meshStandardMaterial color={P.woodTrim} {...CLAY} {...glow} />
+            </mesh>
+            {/* laundry poking out */}
+            <mesh position={[0.12, 0.8, 0.06]} scale={[1, 0.6, 1]} castShadow>
+              <sphereGeometry args={[0.17, 16, 16]} />
+              <meshStandardMaterial color={P.white} {...CLAY} {...glow} />
+            </mesh>
+            <mesh position={[-0.13, 0.78, -0.07]} scale={[1, 0.55, 1]} castShadow>
+              <sphereGeometry args={[0.14, 16, 16]} />
+              <meshStandardMaterial color={P.teal} {...CLAY} {...glow} />
+            </mesh>
+          </group>
+        );
+      }}
     </Interactive>
   );
 }
