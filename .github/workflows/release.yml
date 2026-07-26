@@ -57,10 +57,12 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Signs the updater artifacts. Without these two the build still
-          # succeeds but ships no signature, and clients reject the update.
+          # Signs the updater artifacts. Without the key the build fails
+          # outright rather than shipping an unsigned update clients reject.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Literal empty string, NOT a secret: the key was generated without a
+          # password, and GitHub refuses to save a secret with a blank value.
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'luro ${{ github.ref_name }}'
