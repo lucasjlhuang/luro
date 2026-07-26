@@ -376,19 +376,32 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     const center = box.getCenter(new THREE.Vector3());
     const scale = model.height / Math.max(size.y, 1e-6);
     const custom = CUSTOMIZE[role];
+    const matches = (name: string, key: string) =>
+      name.toLowerCase().includes(key.toLowerCase());
     scene.traverse((obj) => {
-      if (obj instanceof THREE.Mesh) {
-        obj.castShadow = true;
-        obj.frustumCulled = false; // skinned bounds are wrong mid-clip
-        const mat = (Array.isArray(obj.material) ? obj.material[0] : obj.material) as THREE.Material;
-        if (custom.hide.includes(mat.name)) obj.visible = false;
-        const recolor = custom.recolor[mat.name];
-        if (recolor && mat instanceof THREE.MeshStandardMaterial) {
-          const clone = mat.clone();
-          clone.color.set(recolor);
-          obj.material = clone;
-        }
+      if (!(obj instanceof THREE.Mesh)) return;
+      obj.castShadow = true;
+      obj.frustumCulled = false; // skinned bounds are wrong mid-clip
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      const meshNames = [obj.name, ...mats.map((m) => m.name)];
+      if (custom.hide.some((h) => meshNames.some((n) => matches(n, h)))) {
+        obj.visible = false;
+        return;
       }
+      // Tint any material exposing a colour channel — Sketchfab-era
+      // exports can load as custom material classes, so no instanceof.
+      const recolorOne = (mat: THREE.Material): THREE.Material => {
+        for (const [key, hex] of Object.entries(custom.recolor)) {
+          if (matches(mat.name, key) || matches(obj.name, key)) {
+            const clone = mat.clone();
+            const tintable = clone as THREE.Material & { color?: THREE.Color };
+            if (tintable.color) tintable.color.set(hex);
+            return clone;
+          }
+        }
+        return mat;
+      };
+      obj.material = Array.isArray(obj.material) ? mats.map(recolorOne) : recolorOne(mats[0]);
     });
     return { scale, offset: [-center.x, -box.min.y, -center.z] as const };
   }, [scene, model.height, role]);
