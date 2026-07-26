@@ -246,10 +246,10 @@ function buildLook(role: Role, a: Appearance): Look {
   if (a.blush) {
     faceStamps.push({
       kind: 'dot',
-      color: '#D9455F',
-      count: 34,
-      size: 5.6,
-      opacity: 0.26,
+      color: '#E8879B',
+      count: 30,
+      size: 5.5,
+      opacity: 0.14,
       seed: 3,
       where: (p) =>
         p.z < 0.28 &&
@@ -257,19 +257,6 @@ function buildLook(role: Role, a: Appearance): Look {
         p.y < 0.31 &&
         Math.abs(p.x - 0.5) > 0.09 &&
         Math.abs(p.x - 0.5) < 0.27,
-    });
-  }
-  if (a.stubble) {
-    // Jaw, chin and upper lip: many tiny, very faint dots read as shadow
-    // rather than dirt. Sits below the freckle band and wraps further round.
-    faceStamps.push({
-      kind: 'dot',
-      color: '#3b2b22',
-      count: 150,
-      size: 1.15,
-      opacity: 0.2,
-      seed: 27,
-      where: (p) => p.z < 0.42 && p.y > 0.03 && p.y < 0.19 && Math.abs(p.x - 0.5) < 0.34,
     });
   }
 

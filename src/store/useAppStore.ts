@@ -78,7 +78,6 @@ export interface Appearance {
   trim: string;
   freckles: boolean;
   blush: boolean;
-  stubble: boolean;
   pattern: PatternKey;
   accessories: Record<AccessoryKey, boolean>;
 }
@@ -93,9 +92,8 @@ const DEFAULT_APPEARANCE: Record<Role, Appearance> = {
     trim: '#5A6B4E',
     freckles: true,
     blush: false,
-    stubble: true,
     pattern: 'none',
-    accessories: { glasses: true, hat: false, cape: false, staff: true },
+    accessories: { glasses: false, hat: false, cape: false, staff: true },
   },
   USER_B: {
     hairTop: '#4A250C',
@@ -105,7 +103,6 @@ const DEFAULT_APPEARANCE: Record<Role, Appearance> = {
     trim: '#5A6B4E',
     freckles: false,
     blush: true,
-    stubble: false,
     pattern: 'flowers',
     accessories: { glasses: false, hat: false, cape: false, staff: true },
   },
@@ -133,7 +130,6 @@ const sanitizeAppearance = (state: AppearanceState | undefined): AppearanceState
       trim: pick(a.trim, d.trim),
       freckles: a.freckles === true,
       blush: a.blush === true,
-      stubble: a.stubble === true,
       pattern: a.pattern === 'flowers' ? 'flowers' : 'none',
       accessories: ACCESSORIES.reduce(
         (acc, { key }) => ({ ...acc, [key]: a.accessories?.[key] === true }),

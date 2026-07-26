@@ -902,7 +902,6 @@ function WardrobeModal() {
             <div className="flex flex-wrap gap-1.5">
               <Toggle label="Freckles" on={a.freckles} onChange={(v) => set({ freckles: v })} />
               <Toggle label="Blush" on={a.blush} onChange={(v) => set({ blush: v })} />
-              <Toggle label="Stubble" on={a.stubble} onChange={(v) => set({ stubble: v })} />
             </div>
           </div>
 
