@@ -38,7 +38,14 @@ useGLTF.preload(roroUrl);
  */
 const CUSTOMIZE: Record<Role, { hide: string[]; recolor: Record<string, string> }> = {
   USER_A: { hide: ['outfit_hat'], recolor: { skin_hair: '#3b2a1d' } }, // Lulu: dark brown
-  USER_B: { hide: ['outfit_hat'], recolor: { skin_hair: '#a8815a' } }, // Roro: light brown
+  USER_B: {
+    hide: ['outfit_hat'],
+    recolor: {
+      skin_hair: '#a8815a', // light brown
+      outfit_body: '#cfe8b5', // light green robes
+      outfit_boots: '#f28bb4', // pink accents
+    },
+  },
 };
 
 /** Clip names inside roro.glb, mapped to app states. */
