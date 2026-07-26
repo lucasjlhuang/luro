@@ -1,6 +1,7 @@
-# Desk Overlay — Session Handoff
+# luro (formerly "Desk Overlay") — Session Handoff
 
-Read this first in a fresh session. Working dir: `/Users/yer/desk-overlay` (git repo,
+Read this first in a fresh session. Working dir: `/Users/yer/desk-overlay` — the DIRECTORY keeps
+the old name; the app is called "luro" (git repo,
 commit after every accepted change; history is the undo mechanism — the user says
 "revert" often).
 
@@ -273,6 +274,30 @@ atlas per triangle) is what identified the sash vs the hem in the first place.
    `emissiveTexture`. Fullbright exports (black base + emissive map) ignore
    `.color` entirely. Textures here are `EXT_texture_webp`; extract a bufferView
    and `sips -s format png` to eyeball one.
+
+## Packaging (verified 2026-07-26)
+
+- `npm run tauri build` succeeds; outputs `luro.app` + `luro_0.1.0_aarch64.dmg`
+  under `src-tauri/target/release/bundle/`. Verified the three GLBs and the JS/
+  CSS/font assets are embedded IN THE BINARY (Tauri v2 compiles `dist` in, so
+  there are no loose files in `Contents/Resources` — do not "fix" that).
+- **A Windows .exe cannot be built on the Mac** (needs MSVC + WebView2; only
+  `aarch64-apple-darwin` is installed here). `.github/workflows/release.yml`
+  builds macOS-universal + Windows via `tauri-action` on a tag push. Needs a
+  GitHub remote — the repo has none yet.
+- Icons come from `src-tauri/app-icon.png` (the user's pink hearts, 300x300)
+  via `npx tauri icon`; the android/ios sets it emits are deleted each time.
+  A 1024x1024 source would be sharper at the largest macOS sizes.
+- `identifier` is DELIBERATELY still `com.deskoverlay.app` after the rename to
+  luro: it keys the webview data dir, so changing it wipes every user's
+  localStorage (notes, tasks, habits). Only change it on a clean start.
+- Peer IDs are still `desk-overlay-user-a/b` for the same reason — changing
+  them breaks sync against any device still on an older build.
+- CSP is now set (was null). It allows `self` plus the PeerJS broker only. It
+  is the highest-risk item in the packaging pass because a mistake here shows
+  up only at runtime — if the packaged app boots blank or cannot connect, set
+  `"csp": null` to rule it out before looking anywhere else.
+- Not code-signed: macOS needs right-click -> Open, Windows "Run anyway".
 
 ## Assets & licenses (README has full credits)
 

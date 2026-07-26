@@ -349,8 +349,13 @@ export const useAppStore = create<AppState>()(
       },
 
       addLocalStroke: (partial) => {
-        const stroke: Stroke = { ...partial, id: uid(), author: get().role, t: Date.now() };
-        set({ strokes: [...get().strokes, stroke] });
+        const stroke = compactStroke({
+          ...partial,
+          id: uid(),
+          author: get().role,
+          t: Date.now(),
+        });
+        set({ strokes: [...get().strokes, stroke].slice(-MAX_STROKES) });
         broadcast({ type: 'STROKE_ADD', payload: stroke });
       },
 
@@ -629,12 +634,32 @@ function buildFullSync(): SyncMessage {
   };
 }
 
+/**
+ * Whiteboard history is capped, and points are stored at 4 decimal places.
+ *
+ * Both matter for a long-lived install: strokes are persisted to localStorage,
+ * which has a ~5MB quota, and full float precision runs ~18 characters per
+ * coordinate. Left unbounded, months of drawing would eventually throw
+ * QuotaExceededError on write — which does not just lose the drawing, it stops
+ * notes, tasks and habits being saved too, since they share one persisted blob.
+ * 4 decimals is sub-pixel on a normalised 0..1 board, and shrinks the network
+ * payload by the same factor.
+ */
+const MAX_STROKES = 600;
+const COORD_DP = 4;
+
+const compactStroke = (s: Stroke): Stroke => ({
+  ...s,
+  points: s.points.map((v) => Math.round(v * 10 ** COORD_DP) / 10 ** COORD_DP),
+});
+
 function mergeStrokes(local: Stroke[], incoming: Stroke[]): Stroke[] {
   const byId = new Map<string, Stroke>();
   for (const s of [...local, ...incoming]) {
     if (!byId.has(s.id)) byId.set(s.id, s);
   }
-  return [...byId.values()].sort((a, b) => a.t - b.t);
+  // oldest fall off the front once the cap is reached
+  return [...byId.values()].sort((a, b) => a.t - b.t).slice(-MAX_STROKES);
 }
 
 function handleMessage(msg: SyncMessage): void {

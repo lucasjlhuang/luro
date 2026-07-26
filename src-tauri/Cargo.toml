@@ -1,12 +1,12 @@
 [package]
-name = "desk-overlay"
+name = "luro"
 version = "0.1.0"
-description = "Collaborative 3D isometric desk overlay"
+description = "Collaborative 3D isometric shared desk"
 authors = ["you"]
 edition = "2021"
 
 [lib]
-name = "desk_overlay_lib"
+name = "luro_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

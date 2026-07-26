@@ -1,9 +1,9 @@
-# Desk Overlay
+# luro
 
 A collaborative, transparent, always-on-top 3D isometric desk that floats over your desktop.
 Two people (User A / User B) each run the app; it auto-connects over WebRTC (PeerJS) with no
-room codes and keeps a shared notebook, corkboard, whiteboard, pomodoro timer, and day/night
-lighting in sync.
+room codes and keeps a shared notebook, corkboard, whiteboard, pomodoro timer, habit tracker,
+and day/night lighting in sync.
 
 Stack: **Tauri v2 · React 18 · TypeScript · Three.js · @react-three/fiber · drei · Zustand · Tailwind · PeerJS**
 
@@ -14,8 +14,28 @@ npm install
 npm run tauri dev
 ```
 
-Production bundle: `npm run tauri build` (run `npx tauri icon src-tauri/icons/icon.png` first to
-generate the platform icon set — the checked-in `icon.png` is a dev placeholder).
+## Packaging
+
+```bash
+npm run tauri build
+```
+
+Output lands in `src-tauri/target/release/bundle/` — `.app` and `.dmg` on macOS, `.msi` and an
+NSIS `.exe` on Windows.
+
+**Tauri builds only for the platform it runs on.** A Windows `.exe` cannot be produced from a
+Mac (it needs the MSVC toolchain and WebView2), so `.github/workflows/release.yml` builds both:
+push a tag (`git tag v0.1.0 && git push origin v0.1.0`) or run the workflow by hand from the
+Actions tab, and it attaches a universal macOS `.dmg` and the Windows installers to a draft
+release. This requires the repo to have a GitHub remote.
+
+Neither build is code-signed, so first launch shows a warning — right-click → Open on macOS,
+"More info" → "Run anyway" on Windows. Signing needs an Apple Developer ID and a Windows
+certificate.
+
+Icons are generated from `src-tauri/app-icon.png` with `npx tauri icon src-tauri/app-icon.png`
+(then delete the `android/` and `ios/` sets it emits — this is a desktop-only app). The source is
+300×300; a 1024×1024 original would come out sharper at the largest macOS sizes.
 
 ## How it works
 
@@ -30,8 +50,13 @@ generate the platform icon set — the checked-in `icon.png` is a dev placeholde
   public PeerJS cloud broker and keep dialing each other every 4 s until a reliable data channel
   opens. On connect, each side sends a `FULL_SYNC`; afterwards granular messages sync notes,
   tasks, whiteboard strokes, lamp/lighting state, and the timer (last-write-wins via timestamps).
-- **Persistence** — Zustand `persist` keeps notes, tasks, strokes, lighting, timer, and role in
-  `localStorage`; PeerJS handles live in module-level singletons, never in persisted state.
+- **Persistence** — Zustand `persist` keeps notes, tasks, habits, strokes, lighting, timer, and
+  role in `localStorage`; PeerJS handles live in module-level singletons, never in persisted
+  state. Stroke history is capped at 600 and coordinates are stored to 4 decimal places, which
+  keeps the whole blob under ~1.7 MB against the ~5 MB quota — unbounded, it would eventually
+  throw on write and take notes, tasks and habits down with it.
+- **Habit tracker** — the dumbbell opens a shared weekly grid. Unlike notes and tasks, which are
+  per-user, this is one board both people edit, resolved last-write-wins on `updatedAt`.
 
 ## Asset credits
 
@@ -49,3 +74,10 @@ from a 1.3M-triangle scan). This project is personal and non-commercial.
   self-host `peerjs-server` and pass `host`/`port` to the `Peer` constructor, or namespace the IDs.
 - A `WHITEBOARD_CLEAR` that happens while the peer is offline can be resurrected by that peer's
   next `FULL_SYNC` (stroke sets are merged by id — eventual-consistency trade-off).
+- No TURN server is configured, so PeerJS falls back to Google's public STUN. Two desks behind
+  strict/symmetric NAT may fail to establish a data channel even though both show CONNECTING.
+- `macOSPrivateApi` is required for the transparent window and makes the app ineligible for the
+  Mac App Store. Not an issue for direct distribution.
+- The CSP in `tauri.conf.json` allows only `self` plus the PeerJS broker. If a future change
+  fetches from anywhere else it will be blocked — widen `connect-src`, or set `"csp": null` to
+  rule CSP out while debugging.
