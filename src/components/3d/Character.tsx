@@ -38,12 +38,16 @@ useGLTF.preload(roroUrl);
  */
 type Band = { match?: (hue: number, sat: number) => boolean; to: string };
 
-/* The robe, its sash and its hem trim all share ONE material and ONE atlas,
- * so they can only be told apart by colour: the cloth is desaturated purple,
- * while the sash/trim are the saturated blue and gold runs. Widen or narrow
- * these two predicates to move the pink/green boundary. */
+/* The dress, its sash and its hem trim all share ONE material and ONE atlas,
+ * and the sash is not separable geometry — it can only be told apart by colour:
+ * the cloth is desaturated purple, the sash/trim are the saturated blue and
+ * gold runs. Both bands are painted the SAME pink, but they stay separate bands
+ * on purpose: each is normalised to its own mean lightness, which collapses the
+ * sash's contrast against the dress so it stops reading as a band at all. One
+ * shared band instead would leave the sash blown out several stops brighter. */
 const isTrimGold = (h: number, s: number) => h >= 20 && h <= 70 && s >= 0.2;
 const isTrimBlue = (h: number, s: number) => h >= 185 && h <= 248 && s >= 0.35;
+const CLOTH_PINK = '#FF46A2';
 
 /**
  * Per-role model surgery, keyed by material name: hide parts (the hood has
@@ -58,9 +62,10 @@ const CUSTOMIZE: Record<Role, { hide: string[]; paint: Record<string, Band[]> }>
     paint: {
       skin_hair: [{ to: '#893718' }], // light brown
       outfit_body: [
-        { match: (h, s) => isTrimGold(h, s) || isTrimBlue(h, s), to: '#FF46A2' }, // sash + hem trim
-        { to: '#80EF80' }, // the dress itself
+        { match: (h, s) => isTrimGold(h, s) || isTrimBlue(h, s), to: CLOTH_PINK }, // sash + hem trim
+        { to: CLOTH_PINK }, // the dress itself
       ],
+      outfit_boots: [{ to: CLOTH_PINK }],
       // leave the white catchlights alone, recolour only the glowing iris
       skin_eyes: [{ match: (_h, s) => s >= 0.25, to: '#50C878' }], // emerald
     },
@@ -116,7 +121,8 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
 
 /** Source texture -> a recoloured copy. Cached per (texture, band set). */
 function repaintTexture(tex: THREE.Texture, bands: Band[]): THREE.Texture | null {
-  const key = bands.map((b) => b.to).join('|');
+  // Two bands can now share a colour, so the key notes which ones are matched.
+  const key = bands.map((b) => (b.match ? 'm' : '*') + b.to).join('|');
   let perTex = repaintCache.get(tex);
   if (perTex?.has(key)) return perTex.get(key) ?? null;
 

@@ -103,9 +103,15 @@ share it via `SkeletonUtils.clone` (three-stdlib) until the user provides
   incl. lying offset −0.5x/+0.3y), Zzz, CHAR_POS sync, Wii cursors.
 - `CUSTOMIZE` table: hood hidden (`outfit_hat`; real hair mesh underneath), then
   per-material `paint` BANDS, matched by loose material/mesh name; material
-  CLONED per instance. Roro: hair #893718, dress `outfit_body` #80EF80 with
-  sash/hem trim #FF46A2, eyes `skin_eyes` #50C878. Lulu stand-in: hair #3b2a1d.
-  `outfit_boots` is no longer painted (the old pink there was a guess).
+  CLONED per instance. Roro: hair #893718, eyes `skin_eyes` #50C878, and ALL
+  clothing (`outfit_body` + `outfit_boots`) one pink `CLOTH_PINK` #FF46A2.
+  Lulu stand-in: hair #3b2a1d.
+- The sash could not be deleted — it is not separate geometry, just a region of
+  the `outfit_body` mesh and atlas. It is "removed" by painting its band the
+  same pink as the dress. Keep it as its OWN band even though the colour
+  matches: per-band mean normalisation is what collapses its contrast. Merging
+  into one catch-all band blows 10k texels out to white (measured); two bands
+  clip 15.
 ### Recolouring: how it actually works
 
 The pack is **FULLBRIGHT**. Every material has `baseColorFactor` pure black,
