@@ -6,6 +6,7 @@ import { SkeletonUtils } from 'three-stdlib';
 import {
   AccessoryKey,
   Appearance,
+  patternDefaultColor,
   CharacterStatus,
   CharPos,
   Role,
@@ -147,8 +148,16 @@ type Band = {
  * rule reads as "on the cheeks" rather than "somewhere in this atlas corner".
  */
 type Stamp = {
-  kind: 'dot' | 'flower';
+  kind: 'dot' | 'flower' | 'star' | 'heart' | 'moon';
   color: string;
+  /**
+   * Only stamp where the (already band-painted) pixel is close in hue/sat to
+   * this colour — how a print stays on Lulu's tunic and off his belt and
+   * trousers, which share the same mesh and atlas.
+   */
+  on?: string;
+  /** Poisson-style minimum spacing in texels; 0/undefined = none. */
+  minDist?: number;
   /** Attempts; some are rejected by `where`, so the visible count is lower. */
   count: number;
   /** Radius in texels. */
@@ -157,6 +166,18 @@ type Stamp = {
   /** Seed so a given character's marks never move between launches. */
   seed?: number;
   where: (p: { x: number; y: number; z: number }) => boolean;
+};
+
+/**
+ * Whole-region prints painted per-texel by BODY position — stripes follow the
+ * garment around the body instead of the atlas layout. Gated by `on` like
+ * stamps. Lightness carries the garment's baked shading, so the print looks
+ * woven in rather than pasted on.
+ */
+type Overlay = {
+  kind: 'stripes' | 'plaid';
+  color: string;
+  on: string;
 };
 
 /* The dress, skirt and trims all share ONE material and ONE atlas, so they can
@@ -220,7 +241,50 @@ interface Look {
   gear: string[];
   paint: Record<string, Band[]>;
   stamp?: Record<string, Stamp[]>;
+  overlay?: Record<string, Overlay[]>;
   accessories: Record<AccessoryKey, boolean>;
+}
+
+/**
+ * The pattern print for one garment: motif patterns are stamps, woven ones
+ * are overlays; both are gated to the garment colour so a print aimed at
+ * Lulu's tunic never lands on the belt or trousers sharing its atlas.
+ */
+function garmentPattern(
+  a: Appearance,
+  on: string,
+  seed: number,
+  scale = 1
+): { stamps: Stamp[]; overlays: Overlay[] } {
+  const stamps: Stamp[] = [];
+  const overlays: Overlay[] = [];
+  if (a.pattern === 'none') return { stamps, overlays };
+  const color = a.patternColor ?? patternDefaultColor(a.pattern, a.trim);
+  const anywhere = (p: { y: number }) => p.y > 0.05 && p.y < 0.95;
+  if (a.pattern === 'flowers') {
+    stamps.push({
+      kind: 'flower', color, on, count: Math.round(36 * scale), size: 12.8 * scale,
+      opacity: 0.95, seed, where: anywhere,
+    });
+  } else if (a.pattern === 'dots') {
+    stamps.push({
+      kind: 'dot', color, on, count: Math.round(46 * scale), size: 7.5 * scale,
+      minDist: 7.5 * scale * 2.8, opacity: 0.95, seed, where: anywhere,
+    });
+  } else if (a.pattern === 'stars') {
+    stamps.push({
+      kind: 'star', color, on, count: Math.round(34 * scale), size: 10 * scale,
+      minDist: 10 * scale * 2.6, opacity: 0.95, seed, where: anywhere,
+    });
+  } else if (a.pattern === 'moons') {
+    stamps.push({
+      kind: 'moon', color, on, count: Math.round(30 * scale), size: 9 * scale,
+      minDist: 9 * scale * 2.8, opacity: 0.95, seed, where: anywhere,
+    });
+  } else {
+    overlays.push({ kind: a.pattern, color, on });
+  }
+  return { stamps, overlays };
 }
 
 /**
@@ -230,7 +294,26 @@ interface Look {
  * which materials exist, which hue bands mean what, where on the body the marks
  * belong. That part is per-model and not something a user picks.
  */
-function buildLook(role: Role, a: Appearance): Look {
+/** Pyjama palette, worn automatically at night: navy, with a sleepy print. */
+const PJ = {
+  outfit: '#2B3A5C',
+  trim: '#3D4E75',
+  print: '#F2E6B8', // pale starlight yellow
+};
+
+function buildLook(role: Role, a: Appearance, night = false): Look {
+  if (night) {
+    // Same garments, repainted: at this size navy + stars/moons reads
+    // unmistakably as PJs. Day-time wardrobe choices are untouched underneath
+    // and come back at sunrise; hair, face and accessories stay the user's.
+    a = {
+      ...a,
+      outfit: PJ.outfit,
+      trim: PJ.trim,
+      pattern: role === 'USER_B' ? 'stars' : 'moons',
+      patternColor: PJ.print,
+    };
+  }
   const faceStamps: Stamp[] = [];
   if (a.freckles) {
     faceStamps.push({
@@ -260,6 +343,29 @@ function buildLook(role: Role, a: Appearance): Look {
     });
   }
 
+  if (a.cheekSticker !== 'none') {
+    // one sticker per cheek, mirrored; sized like blush so it survives the
+    // character's on-screen size (the stubble lesson)
+    const kind = a.cheekSticker;
+    for (const side of [-1, 1] as const) {
+      faceStamps.push({
+        kind,
+        color: '#F473A0',
+        count: 1,
+        size: 5.4,
+        opacity: 0.9,
+        seed: side > 0 ? 41 : 43,
+        where: (p) =>
+          p.z < 0.28 &&
+          p.y > 0.19 &&
+          p.y < 0.3 &&
+          (side < 0
+            ? p.x - 0.5 < -0.11 && p.x - 0.5 > -0.25
+            : p.x - 0.5 > 0.11 && p.x - 0.5 < 0.25),
+      });
+    }
+  }
+
   const gear = a.accessories.staff ? ['weapon'] : [];
   const hide = [
     ...(a.accessories.hat ? [] : ['outfit_hat']),
@@ -273,16 +379,27 @@ function buildLook(role: Role, a: Appearance): Look {
   const capeColor = a.capeColor ?? followColor;
 
   if (role === 'USER_A') {
+    const tunicPat = garmentPattern(a, a.outfit, 21);
+    const capePat = a.accessories.cape ? garmentPattern(a, capeColor, 23, 0.9) : { stamps: [], overlays: [] };
+    const stampA: Record<string, Stamp[]> = {};
+    if (faceStamps.length) stampA.skin_face = faceStamps;
+    const bodyStampsA = [...tunicPat.stamps];
+    if (bodyStampsA.length) stampA.outfit_body = bodyStampsA;
+    if (capePat.stamps.length) stampA.outfit_cloak = capePat.stamps;
+    const overlayA: Record<string, Overlay[]> = {};
+    if (tunicPat.overlays.length) overlayA.outfit_body = tunicPat.overlays;
+    if (capePat.overlays.length) overlayA.outfit_cloak = capePat.overlays;
     return {
       hide,
       gear,
       accessories: a.accessories,
+      overlay: Object.keys(overlayA).length ? overlayA : undefined,
       paint: {
         skin_hair: [{ to: a.hairTop, toBottom: a.hairBottom }],
         skin_eyes: [{ match: (_h, s2) => s2 >= 0.25, to: a.eyes }],
         outfit_body: [
-          { match: isBuckle, to: '#C8CBD0' }, // buckle -> silver
-          { match: isLeather, bodyBand: BELT_BAND, to: '#6B4423' }, // belt
+          { match: isBuckle, to: night ? PJ.trim : '#C8CBD0' }, // buckle
+          { match: isLeather, bodyBand: BELT_BAND, to: night ? '#22304A' : '#6B4423' }, // belt
           { match: isLeather, to: '#141414' }, // trousers
           { match: isLining, to: a.trim }, // collar + hem lining
           { match: isTunic, to: a.outfit }, // tunic
@@ -291,7 +408,7 @@ function buildLook(role: Role, a: Appearance): Look {
         ...(a.accessories.hat ? { outfit_hat: [{ to: hatColor }] } : {}),
         ...(a.accessories.cape ? { outfit_cloak: [{ to: capeColor }] } : {}),
       },
-      stamp: faceStamps.length ? { skin_face: faceStamps } : undefined,
+      stamp: Object.keys(stampA).length ? stampA : undefined,
     };
   }
 
@@ -303,40 +420,18 @@ function buildLook(role: Role, a: Appearance): Look {
   ];
   const stamp: Record<string, Stamp[]> = {};
   if (faceStamps.length) stamp.skin_face = faceStamps;
-  if (a.pattern === 'flowers') {
-    // Fewer but much bigger: at the size a character renders, 4.6-texel
-    // flowers read as noise. Count drops as size grows or the print tips
-    // from "patterned fabric" into solid pink.
-    stamp.outfit_body = [
-      {
-        kind: 'flower',
-        color: '#EC93B8',
-        count: 36,
-        size: 12.8,
-        opacity: 0.95,
-        seed: 5,
-        where: (p) => p.y > 0.12 && p.y < 0.88,
-      },
-    ];
-    // the hood is part of the same outfit, so the print continues onto it
-    if (a.accessories.hat) {
-      stamp.outfit_hat = [
-        {
-          kind: 'flower',
-          color: '#EC93B8',
-          count: 12,
-          size: 11.2,
-          opacity: 0.95,
-          seed: 8,
-          where: () => true,
-        },
-      ];
-    }
-  }
+  const dressPat = garmentPattern(a, a.outfit, 5);
+  const hoodPat = a.accessories.hat ? garmentPattern(a, hatColor, 8, 0.8) : { stamps: [], overlays: [] };
+  if (dressPat.stamps.length) stamp.outfit_body = dressPat.stamps;
+  if (hoodPat.stamps.length) stamp.outfit_hat = hoodPat.stamps;
+  const overlayB: Record<string, Overlay[]> = {};
+  if (dressPat.overlays.length) overlayB.outfit_body = dressPat.overlays;
+  if (hoodPat.overlays.length) overlayB.outfit_hat = hoodPat.overlays;
   return {
     hide,
     gear,
     accessories: a.accessories,
+    overlay: Object.keys(overlayB).length ? overlayB : undefined,
     paint: {
       skin_hair: [{ to: a.hairTop, toBottom: a.hairBottom }],
       outfit_body: dress,
@@ -347,6 +442,201 @@ function buildLook(role: Role, a: Appearance): Look {
     stamp: Object.keys(stamp).length ? stamp : undefined,
   };
 }
+
+/* ---------------------------- accessories ---------------------------- */
+
+/**
+ * Every accessory is procedural geometry parented to a BONE, so animation
+ * carries it with no per-frame work. Positions are MODEL-space targets
+ * converted into bone-local space via the bind pose (both packs share one
+ * rig, so one set of coordinates fits Lulu and Roro alike): head mesh spans
+ * y 0.47..1.04, x +/-0.40; the hair ball reaches ~+/-0.45; face front at
+ * z ~ -0.26 (models face -z).
+ */
+const ACC_MAT = {
+  black: () => new THREE.MeshStandardMaterial({ color: '#141414', roughness: 0.35, metalness: 0.45 }),
+  gold: () => new THREE.MeshStandardMaterial({ color: '#d8b558', roughness: 0.3, metalness: 0.75 }),
+  pink: () => new THREE.MeshStandardMaterial({ color: '#F473A0', roughness: 0.6 }),
+  leaf: () => new THREE.MeshStandardMaterial({ color: '#5A6B4E', roughness: 0.7 }),
+  grey: () => new THREE.MeshStandardMaterial({ color: '#2f2f34', roughness: 0.5, metalness: 0.3 }),
+  silver: () => new THREE.MeshStandardMaterial({ color: '#c8ccd2', roughness: 0.25, metalness: 0.8 }),
+  red: () => new THREE.MeshStandardMaterial({ color: '#B7433D', roughness: 0.75 }),
+  brown: () => new THREE.MeshStandardMaterial({ color: '#8a5a3b', roughness: 0.7 }),
+};
+
+function buildGlasses(): THREE.Group {
+  const g = new THREE.Group();
+  const frame = ACC_MAT.black();
+  const LENS_W = 0.145;
+  const LENS_H = 0.085;
+  const BAR = 0.011; // skinny frames
+  const lens = (cx: number) => {
+    const parts: Array<[number, number, number, number]> = [
+      [cx, LENS_H / 2, LENS_W, BAR],
+      [cx, -LENS_H / 2, LENS_W, BAR],
+      [cx - LENS_W / 2, 0, BAR, LENS_H + BAR],
+      [cx + LENS_W / 2, 0, BAR, LENS_H + BAR],
+    ];
+    for (const [x, y, w, h] of parts) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, BAR), frame);
+      m.position.set(x, y, 0);
+      m.castShadow = true;
+      g.add(m);
+    }
+  };
+  lens(-LENS_W / 2 - 0.016);
+  lens(LENS_W / 2 + 0.016);
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(0.032, BAR, BAR), frame));
+  for (const side of [-1, 1]) {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(BAR, BAR, 0.17), frame);
+    arm.position.set(side * (LENS_W + 0.024), 0.012, 0.085);
+    arm.rotation.y = side * 0.12;
+    g.add(arm);
+  }
+  return g;
+}
+
+function buildFlowerCrown(): THREE.Group {
+  const g = new THREE.Group();
+  const petal = ACC_MAT.pink();
+  const centre = ACC_MAT.gold();
+  const leaf = ACC_MAT.leaf();
+  const R = 0.33; // sits around the hair ball
+  const band = new THREE.Mesh(new THREE.TorusGeometry(R, 0.016, 8, 28), leaf);
+  band.rotation.x = Math.PI / 2;
+  g.add(band);
+  for (let i = 0; i < 8; i += 1) {
+    const a = (i / 8) * Math.PI * 2;
+    const fx = Math.cos(a) * R;
+    const fz = Math.sin(a) * R;
+    for (let k = 0; k < 5; k += 1) {
+      const pa = (k / 5) * Math.PI * 2;
+      const m = new THREE.Mesh(new THREE.SphereGeometry(0.026, 8, 8), petal);
+      m.position.set(fx + Math.cos(pa) * 0.032, Math.sin(pa) * 0.032 * 0.4, fz + Math.sin(pa) * 0.02);
+      g.add(m);
+    }
+    const c = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 8), centre);
+    c.position.set(fx, 0.012, fz);
+    g.add(c);
+  }
+  return g;
+}
+
+function buildBow(): THREE.Group {
+  const g = new THREE.Group();
+  const pink = ACC_MAT.pink();
+  for (const side of [-1, 1]) {
+    const loop = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.07, 0.03), pink);
+    loop.position.set(side * 0.065, 0, 0);
+    loop.rotation.z = side * 0.55;
+    loop.castShadow = true;
+    g.add(loop);
+  }
+  const knot = new THREE.Mesh(new THREE.SphereGeometry(0.032, 10, 10), pink);
+  g.add(knot);
+  return g;
+}
+
+function buildEarrings(): THREE.Group {
+  const g = new THREE.Group();
+  const gold = ACC_MAT.gold();
+  for (const side of [-1, 1]) {
+    const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.028, 0.008, 8, 16), gold);
+    hoop.position.set(side * 0.40, -0.02, 0);
+    g.add(hoop);
+  }
+  return g;
+}
+
+function buildHeadphones(): THREE.Group {
+  const g = new THREE.Group();
+  const grey = ACC_MAT.grey();
+  const silver = ACC_MAT.silver();
+  // band arched over the hair
+  for (let i = 0; i <= 8; i += 1) {
+    const t = i / 8 - 0.5;
+    const seg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.035, 0.06), grey);
+    seg.position.set(t * 0.92, 0.33 - t * t * 1.15, 0);
+    seg.rotation.z = -t * 1.2;
+    g.add(seg);
+  }
+  for (const side of [-1, 1]) {
+    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.05, 14), grey);
+    cup.rotation.z = Math.PI / 2;
+    cup.position.set(side * 0.46, -0.06, 0);
+    cup.castShadow = true;
+    g.add(cup);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.012, 8, 18), silver);
+    ring.rotation.y = Math.PI / 2;
+    ring.position.set(side * 0.485, -0.06, 0);
+    g.add(ring);
+  }
+  return g;
+}
+
+function buildScarf(): THREE.Group {
+  const g = new THREE.Group();
+  const red = ACC_MAT.red();
+  const wrap = new THREE.Mesh(new THREE.TorusGeometry(0.155, 0.055, 10, 22), red);
+  wrap.rotation.x = Math.PI / 2;
+  wrap.castShadow = true;
+  g.add(wrap);
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.2, 0.045), red);
+  tail.position.set(0.05, -0.13, -0.14);
+  tail.rotation.z = 0.12;
+  tail.castShadow = true;
+  g.add(tail);
+  return g;
+}
+
+function buildCrown(): THREE.Group {
+  const g = new THREE.Group();
+  const gold = ACC_MAT.gold();
+  const R = 0.24;
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 0.08, 18, 1, true), gold);
+  band.castShadow = true;
+  g.add(band);
+  for (let i = 0; i < 5; i += 1) {
+    const a = (i / 5) * Math.PI * 2;
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.11, 6), gold);
+    spike.position.set(Math.cos(a) * R, 0.09, Math.sin(a) * R);
+    g.add(spike);
+  }
+  return g;
+}
+
+function buildBackpack(): THREE.Group {
+  const g = new THREE.Group();
+  const brown = ACC_MAT.brown();
+  const flap = new THREE.MeshStandardMaterial({ color: '#a5754f', roughness: 0.7 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.34, 0.13), brown);
+  body.castShadow = true;
+  g.add(body);
+  const lid = new THREE.Mesh(new THREE.BoxGeometry(0.31, 0.12, 0.14), flap);
+  lid.position.set(0, 0.13, 0);
+  g.add(lid);
+  const pocket = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.13, 0.05), flap);
+  pocket.position.set(0, -0.07, 0.085);
+  g.add(pocket);
+  return g;
+}
+
+/**
+ * Bone + model-space target per accessory. `hat`/`cape`/`staff` are real pack
+ * meshes handled by hide/gear, so they have no builder here.
+ */
+const ACCESSORY_BUILDERS: Partial<
+  Record<AccessoryKey, { bone: RegExp; target: [number, number, number]; build: () => THREE.Group }>
+> = {
+  glasses: { bone: /head\.head/i, target: [0, 0.7, -0.262], build: buildGlasses },
+  flowerCrown: { bone: /head\.head/i, target: [0, 0.98, 0.02], build: buildFlowerCrown },
+  bow: { bone: /head\.head/i, target: [0.27, 0.96, 0.1], build: buildBow },
+  earrings: { bone: /head\.head/i, target: [0, 0.6, -0.02], build: buildEarrings },
+  headphones: { bone: /head\.head/i, target: [0, 0.72, 0.0], build: buildHeadphones },
+  scarf: { bone: /head\.neck/i, target: [0, 0.5, 0], build: buildScarf },
+  crown: { bone: /head\.head/i, target: [0, 1.02, 0.02], build: buildCrown },
+  backpack: { bone: /head\.neck/i, target: [0, 0.28, 0.2], build: buildBackpack },
+};
 
 /* ------------------------- texture repainting ------------------------- */
 
@@ -509,12 +799,14 @@ function repaintTexture(
   tex: THREE.Texture,
   bands: Band[],
   geom?: THREE.BufferGeometry,
-  stamps?: Stamp[]
+  stamps?: Stamp[],
+  overlays?: Overlay[]
 ): THREE.Texture | null {
   // Bands can share a colour, so the key notes matchers and height slices too.
   const key =
     bands.map((b) => (b.match ? 'm' : '*') + (b.bodyBand?.join(':') ?? '') + b.to + (b.toBottom ?? '')).join('|') +
-    (stamps?.map((st) => `${st.kind}${st.color}${st.count}${st.size}`).join('|') ?? '');
+    (stamps?.map((st) => `${st.kind}${st.color}${st.on ?? ''}${st.count}${st.size}`).join('|') ?? '') +
+    (overlays?.map((ov) => `${ov.kind}${ov.color}${ov.on}`).join('|') ?? '');
   let perTex = repaintCache.get(tex);
   if (perTex?.has(key)) return perTex.get(key) ?? null;
 
@@ -634,6 +926,50 @@ function repaintTexture(
           data[i + 1] = ng;
           data[i + 2] = nb;
         }
+        /* Woven prints, before the buffer goes back to the canvas: stripes
+         * and plaid are per-texel by body position, gated to the garment's
+         * colour, with lightness carried as an offset so the fabric's baked
+         * shading survives inside the print. */
+        if (overlays?.length && tmap) {
+          const hueClose = (h1: number, h2: number) => {
+            const d2 = Math.abs(h1 - h2);
+            return Math.min(d2, 360 - d2) < 10;
+          };
+          for (const ov of overlays) {
+            const [onH, onS] = asHsl(ov.on);
+            const [pH, pS, pL] = asHsl(ov.color);
+            // mean L of the gated region, so the offset trick has a baseline
+            let sumG = 0;
+            let nG = 0;
+            for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+              if (data[i + 3] < 8 || data[i] + data[i + 1] + data[i + 2] < 12) continue;
+              const [hh, ss, ll] = rgbToHsl(data[i], data[i + 1], data[i + 2]);
+              if (!hueClose(hh, onH) || Math.abs(ss - onS) > 0.25) continue;
+              sumG += ll;
+              nG += 1;
+            }
+            const meanG = nG ? sumG / nG : 0.5;
+            const PERIOD = 0.13; // stripe pitch as a fraction of the mesh height
+            for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+              if (!tmap.used[p]) continue;
+              if (data[i + 3] < 8 || data[i] + data[i + 1] + data[i + 2] < 12) continue;
+              const [hh, ss, ll] = rgbToHsl(data[i], data[i + 1], data[i + 2]);
+              if (!hueClose(hh, onH) || Math.abs(ss - onS) > 0.25) continue;
+              const onY = Math.floor(tmap.y[p] / PERIOD) % 2 === 0;
+              const onX = Math.floor(tmap.x[p] / PERIOD) % 2 === 0;
+              let strength = 0;
+              if (ov.kind === 'stripes') strength = onY ? 1 : 0;
+              else strength = onY && onX ? 1 : onY || onX ? 0.55 : 0;
+              if (!strength) continue;
+              const newL = THREE.MathUtils.clamp(pL + (ll - meanG) * 0.8, 0, 1);
+              const [pr, pg, pb] = hslToRgb(pH, pS, newL);
+              data[i] = data[i] + (pr - data[i]) * strength;
+              data[i + 1] = data[i + 1] + (pg - data[i + 1]) * strength;
+              data[i + 2] = data[i + 2] + (pb - data[i + 2]) * strength;
+            }
+          }
+        }
+
         ctx.putImageData(image, 0, 0);
 
         /* Stamps go on afterwards, through the 2D context rather than the
@@ -651,13 +987,23 @@ function repaintTexture(
             // one place, bare patches elsewhere — so candidates too close to
             // an already-placed stamp are rejected. Even scatter, no merging.
             const pts: Array<[number, number]> = [];
-            const minD = st.kind === 'flower' ? st.size * 2.6 : 0;
+            const minD = st.minDist ?? (st.kind === 'flower' ? st.size * 2.6 : 0);
+            const gate = st.on ? asHsl(st.on) : null;
             for (let i = 0; i < st.count * 80 && placed < st.count; i += 1) {
               const px = Math.floor(hashRand(seed * 7919 + i * 2) * w);
               const py = Math.floor(hashRand(seed * 104729 + i * 3) * h);
               const p = py * w + px;
               if (!tmap.used[p]) continue;
               if (!st.where({ x: tmap.x[p], y: tmap.y[p], z: tmap.z[p] })) continue;
+              if (gate) {
+                // keep the print on its garment: the candidate pixel must
+                // still be the gated colour after bands and overlays ran
+                const o4 = p * 4;
+                if (data[o4 + 3] < 8 || data[o4] + data[o4 + 1] + data[o4 + 2] < 12) continue;
+                const [gh, gs] = rgbToHsl(data[o4], data[o4 + 1], data[o4 + 2]);
+                const dh = Math.abs(gh - gate[0]);
+                if (Math.min(dh, 360 - dh) >= 10 || Math.abs(gs - gate[1]) > 0.25) continue;
+              }
               if (minD && pts.some(([qx, qy]) => (qx - px) ** 2 + (qy - py) ** 2 < minD * minD))
                 continue;
               pts.push([px, py]);
@@ -667,6 +1013,55 @@ function repaintTexture(
                 ctx.beginPath();
                 ctx.arc(px, py, r, 0, Math.PI * 2);
                 ctx.fill();
+              } else if (st.kind === 'star') {
+                const r = st.size * (0.7 + hashRand(seed + i * 5) * 0.6);
+                const rot = hashRand(seed + i * 11) * Math.PI * 2;
+                ctx.beginPath();
+                for (let k = 0; k < 10; k += 1) {
+                  const rr = k % 2 === 0 ? r : r * 0.45;
+                  const a = rot + (k / 10) * Math.PI * 2;
+                  const sx2 = px + Math.cos(a) * rr;
+                  const sy2 = py + Math.sin(a) * rr;
+                  if (k === 0) ctx.moveTo(sx2, sy2);
+                  else ctx.lineTo(sx2, sy2);
+                }
+                ctx.closePath();
+                ctx.fill();
+              } else if (st.kind === 'moon') {
+                const r = st.size * (0.75 + hashRand(seed + i * 5) * 0.5);
+                const rot = hashRand(seed + i * 11) * Math.PI * 2;
+                // crescent: outer circle minus an offset inner circle, as one
+                // path — outer arc the long way, inner arc back reversed
+                const d2 = r * 0.55;
+                const r2 = r * 0.8;
+                const phi = Math.acos((r * r + d2 * d2 - r2 * r2) / (2 * r * d2));
+                const ix = Math.cos(phi) * r;
+                const iy = Math.sin(phi) * r;
+                const psi = Math.atan2(iy, ix - d2);
+                ctx.save();
+                ctx.translate(px, py);
+                ctx.rotate(rot);
+                ctx.beginPath();
+                ctx.arc(0, 0, r, phi, Math.PI * 2 - phi, false);
+                ctx.arc(d2, 0, r2, -psi, psi, true);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+              } else if (st.kind === 'heart') {
+                const r = st.size * (0.8 + hashRand(seed + i * 5) * 0.4);
+                const rot = (hashRand(seed + i * 11) - 0.5) * 0.5;
+                ctx.save();
+                ctx.translate(px, py);
+                ctx.rotate(rot);
+                ctx.beginPath();
+                // two lobes and a point — classic heart from arcs + lines
+                ctx.moveTo(0, r * 0.35);
+                ctx.arc(-r * 0.5, -r * 0.25, r * 0.55, Math.PI * 0.75, Math.PI * 1.9);
+                ctx.arc(r * 0.5, -r * 0.25, r * 0.55, Math.PI * 1.1, Math.PI * 0.25);
+                ctx.lineTo(0, r * 0.95);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
               } else {
                 // One pink, varied geometry: size spread, rotation, and 5 or
                 // 6 petals — the variation lives in the PLACEMENT and shape,
@@ -722,14 +1117,17 @@ function paintMaterial(
   mat: THREE.Material,
   bands: Band[],
   geom?: THREE.BufferGeometry,
-  stamps?: Stamp[]
+  stamps?: Stamp[],
+  overlays?: Overlay[]
 ): void {
   const m = mat as THREE.Material & {
     color?: THREE.Color;
     emissive?: THREE.Color;
     emissiveMap?: THREE.Texture | null;
   };
-  const repainted = m.emissiveMap ? repaintTexture(m.emissiveMap, bands, geom, stamps) : null;
+  const repainted = m.emissiveMap
+    ? repaintTexture(m.emissiveMap, bands, geom, stamps, overlays)
+    : null;
   if (repainted) {
     m.emissiveMap = repainted;
     return;
@@ -1065,6 +1463,26 @@ function dampAngle(current: number, target: number, lambda: number, dt: number):
   return current + d * (1 - Math.exp(-lambda * dt));
 }
 
+function makeHeartTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 64;
+  const ctx = c.getContext('2d')!;
+  ctx.translate(32, 26);
+  ctx.fillStyle = '#F25D7E';
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(0, 8);
+  ctx.arc(-11, -5, 12.5, Math.PI * 0.75, Math.PI * 1.9);
+  ctx.arc(11, -5, 12.5, Math.PI * 1.1, Math.PI * 0.25);
+  ctx.lineTo(0, 22);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  return new THREE.CanvasTexture(c);
+}
+
 function makeZzzTexture(): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = 128;
@@ -1179,7 +1597,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
   const { actions, mixer } = useAnimations(animations, scene);
 
   const fitted = useMemo(() => {
-    const custom = buildLook(role, appearance);
+    const custom = buildLook(role, appearance, isNight);
     const matches = (name: string, key: string) =>
       name.toLowerCase().includes(key.toLowerCase());
     const namesOf = (obj: THREE.Mesh) => {
@@ -1250,11 +1668,12 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
       const paintOne = (mat: THREE.Material): THREE.Material => {
         const bands = lookup(custom.paint, mat);
         const stamps = lookup(custom.stamp, mat);
+        const overlays = lookup(custom.overlay, mat);
         // A material may have only stamps — Lulu's face is freckles and
         // nothing else — so an empty band list is a valid case, not a skip.
-        if (!bands && !stamps) return mat;
+        if (!bands && !stamps && !overlays) return mat;
         const clone = mat.clone();
-        paintMaterial(clone, bands ?? [], obj.geometry, stamps);
+        paintMaterial(clone, bands ?? [], obj.geometry, stamps, overlays);
         return clone;
       };
       obj.material = Array.isArray(orig) ? mats.map(paintOne) : paintOne(mats[0]);
@@ -1292,6 +1711,37 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
       if (obj instanceof THREE.SkinnedMesh) skinned.push(obj);
     });
 
+    /* ---- bone-parented accessories ----
+     * Placement uses the skeleton's BIND matrices (boneInverses), never the
+     * live world matrices: this memo re-runs mid-animation whenever the
+     * wardrobe changes, and worldToLocal against an animated bone would put
+     * the accessory wherever the head happened to be that frame. boneInverse
+     * is exactly world->bone-local in the bind pose, whatever the current
+     * pose is. Old accessories are removed first — same clone every run. */
+    const skeleton = skinned[0]?.skeleton;
+    if (skeleton) {
+      for (const bone of skeleton.bones) {
+        for (const child of [...bone.children]) {
+          if (child.name.startsWith('acc:')) bone.remove(child);
+        }
+      }
+      for (const [accKey, def] of Object.entries(ACCESSORY_BUILDERS)) {
+        if (!custom.accessories?.[accKey as AccessoryKey] || !def) continue;
+        const bi = skeleton.bones.findIndex((b) => def.bone.test(b.name));
+        if (bi < 0) continue;
+        const inv = skeleton.boneInverses[bi];
+        const group = def.build();
+        group.name = `acc:${accKey}`;
+        group.position.set(...def.target).applyMatrix4(inv);
+        const q = new THREE.Quaternion();
+        const tmpP = new THREE.Vector3();
+        const tmpS = new THREE.Vector3();
+        inv.decompose(tmpP, q, tmpS);
+        group.quaternion.copy(q); // cancel the bone's bind rotation
+        skeleton.bones[bi].add(group);
+      }
+    }
+
 
     return {
       scale,
@@ -1301,7 +1751,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
       skinned,
       lit,
     };
-  }, [scene, srcScene, role, appearance]);
+  }, [scene, srcScene, role, appearance, isNight]);
 
   /** Flourish pool, derived from whatever clips this model actually ships. */
   const flourishes = useMemo(() => flourishesFrom(animations, model), [animations, model]);
@@ -1344,6 +1794,14 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
   );
 
   const zzzTexture = useMemo(makeZzzTexture, []);
+  const heartTexture = useMemo(makeHeartTexture, []);
+  const heartMeshes = useRef<Array<THREE.Mesh | null>>([null, null, null]);
+  const heartsSim = useRef({
+    cool: 0,
+    mx: 0,
+    mz: 0,
+    hearts: [{ t: null as number | null }, { t: null as number | null }, { t: null as number | null }],
+  });
 
   const puffDirs = useMemo(() => {
     const dirs: THREE.Vector3[] = [];
@@ -1691,6 +2149,62 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
       mat.emissive.copy(base).lerp(TMP_COLOR.copy(base).multiply(NIGHT_TINT), s.night);
     });
 
+    /* ---------- hearts when the two are close ----------
+     * Gated on BOTH being IDLE rather than on stream freshness: the position
+     * stream stops when someone sits down or sleeps because they teleport to
+     * an anchor, and their last streamed spot goes stale — but while both are
+     * IDLE the last position IS where they stand, however old it is. */
+    if (variant === 'me') {
+      const hb = heartsSim.current;
+      const store = useAppStore.getState();
+      const remoteP = store.partnerCharPos;
+      hb.cool -= dt;
+      const near =
+        remoteP !== null &&
+        store.connectionStatus === 'CONNECTED' &&
+        status === 'IDLE' &&
+        store.partnerStatus === 'IDLE' &&
+        s.tele === 'none' &&
+        Math.hypot(remoteP.x - s.x, remoteP.z - s.z) < 0.95;
+      if (near && hb.cool <= 0) {
+        hb.cool = 2.6;
+        hb.mx = (s.x + remoteP.x) / 2;
+        hb.mz = (s.z + remoteP.z) / 2;
+        hb.hearts.forEach((hh, i) => {
+          hh.t = -i * 0.22; // staggered rise
+        });
+      }
+      hb.hearts.forEach((hh, i) => {
+        const mesh = heartMeshes.current[i];
+        if (!mesh) return;
+        const mat = mesh.material as THREE.MeshBasicMaterial;
+        if (hh.t === null) {
+          mat.opacity = 0;
+          return;
+        }
+        hh.t += dt;
+        if (hh.t < 0) {
+          mat.opacity = 0;
+          return;
+        }
+        const life = 1.3;
+        if (hh.t > life) {
+          hh.t = null;
+          mat.opacity = 0;
+          return;
+        }
+        const k = hh.t / life;
+        mesh.position.set(
+          hb.mx + Math.sin(hh.t * 4 + i * 2.1) * 0.07,
+          1.0 + k * 0.7,
+          hb.mz
+        );
+        mesh.quaternion.copy(frame.camera.quaternion);
+        mesh.scale.setScalar(0.8 + 0.3 * Math.sin(k * Math.PI));
+        mat.opacity = k < 0.12 ? k / 0.12 : 1 - (k - 0.12) / 0.88;
+      });
+    }
+
     /* ---------- floating Zzz ---------- */
     const asleep = status === 'SLEEPING' && s.lie > 0.85 && !s.dragging;
     zzzMat.current.opacity = damp(
@@ -1756,6 +2270,21 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
           </Html>
         ) : null}
       </group>
+
+      {/* hearts that rise between the two characters when they are close */}
+      {variant === 'me' &&
+        [0, 1, 2].map((i) => (
+          <mesh
+            key={`heart-${i}`}
+            ref={(el) => {
+              heartMeshes.current[i] = el;
+            }}
+            raycast={() => null}
+          >
+            <planeGeometry args={[0.2, 0.2]} />
+            <meshBasicMaterial map={heartTexture} transparent opacity={0} depthWrite={false} />
+          </mesh>
+        ))}
 
       {/* drop-zone markers while carrying: bed to sleep, chairs to work */}
       {variant === 'me' && dragActive && (

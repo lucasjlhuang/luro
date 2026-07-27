@@ -63,7 +63,18 @@ export interface Task {
  * `label` can differ per role — the same `outfit_hat` mesh is a wizard hat on
  * Lulu and a hood on Roro.
  */
-export type AccessoryKey = 'hat' | 'cape' | 'staff';
+export type AccessoryKey =
+  | 'hat'
+  | 'cape'
+  | 'staff'
+  | 'glasses'
+  | 'flowerCrown'
+  | 'bow'
+  | 'earrings'
+  | 'headphones'
+  | 'scarf'
+  | 'crown'
+  | 'backpack';
 
 export const ACCESSORY_DEFS: Array<{
   key: AccessoryKey;
@@ -73,6 +84,14 @@ export const ACCESSORY_DEFS: Array<{
   { key: 'hat', roles: ['USER_A', 'USER_B'], label: { default: 'Hat', USER_B: 'Hood' } },
   { key: 'cape', roles: ['USER_A'], label: { default: 'Cape' } },
   { key: 'staff', roles: ['USER_A', 'USER_B'], label: { default: 'Staff (at work)' } },
+  { key: 'glasses', roles: ['USER_A', 'USER_B'], label: { default: 'Glasses' } },
+  { key: 'flowerCrown', roles: ['USER_A', 'USER_B'], label: { default: 'Flower crown' } },
+  { key: 'bow', roles: ['USER_A', 'USER_B'], label: { default: 'Hair bow' } },
+  { key: 'earrings', roles: ['USER_A', 'USER_B'], label: { default: 'Earrings' } },
+  { key: 'headphones', roles: ['USER_A', 'USER_B'], label: { default: 'Headphones' } },
+  { key: 'scarf', roles: ['USER_A', 'USER_B'], label: { default: 'Scarf' } },
+  { key: 'crown', roles: ['USER_A', 'USER_B'], label: { default: 'Crown' } },
+  { key: 'backpack', roles: ['USER_A', 'USER_B'], label: { default: 'Backpack' } },
 ];
 
 export const accessoriesFor = (role: Role) =>
@@ -88,8 +107,26 @@ export const accessoryLabel = (key: AccessoryKey, role: Role): string => {
  * implemented for Roro's dress and hood, so Lulu's tab must not offer it.
  * Extend the list when a character gains a printable garment.
  */
-export const PATTERN_ROLES: Role[] = ['USER_B'];
-export type PatternKey = 'none' | 'flowers';
+export const PATTERN_ROLES: Role[] = ['USER_A', 'USER_B'];
+export type PatternKey = 'none' | 'flowers' | 'dots' | 'stars' | 'moons' | 'stripes' | 'plaid';
+export type CheekSticker = 'none' | 'heart' | 'star' | 'flower';
+
+export const PATTERNS: Array<{ key: PatternKey; label: string }> = [
+  { key: 'none', label: 'Plain' },
+  { key: 'flowers', label: 'Flowers' },
+  { key: 'dots', label: 'Dots' },
+  { key: 'stars', label: 'Stars' },
+  { key: 'moons', label: 'Moons' },
+  { key: 'stripes', label: 'Stripes' },
+  { key: 'plaid', label: 'Plaid' },
+];
+
+/**
+ * Default print colour when none is chosen: motif prints read best in the
+ * accent pink, woven prints (stripes/plaid) in the garment's own trim shade.
+ */
+export const patternDefaultColor = (pattern: PatternKey, trim: string): string =>
+  pattern === 'stripes' || pattern === 'plaid' ? trim : '#EC93B8';
 
 export interface Appearance {
   /** Hair runs as a gradient: roots at the top, tips at the bottom. */
@@ -102,6 +139,9 @@ export interface Appearance {
   freckles: boolean;
   blush: boolean;
   pattern: PatternKey;
+  /** null = the pattern's own default (pink motifs, trim-coloured weaves). */
+  patternColor: string | null;
+  cheekSticker: CheekSticker;
   accessories: Record<AccessoryKey, boolean>;
   /**
    * null = FOLLOW the outfit: Lulu's hat/cape track his trim colour, Roro's
@@ -124,7 +164,21 @@ const DEFAULT_APPEARANCE: Record<Role, Appearance> = {
     freckles: true,
     blush: false,
     pattern: 'none',
-    accessories: { hat: false, cape: false, staff: true },
+    patternColor: null,
+    cheekSticker: 'none',
+    accessories: {
+      hat: false,
+      cape: false,
+      staff: true,
+      glasses: false,
+      flowerCrown: false,
+      bow: false,
+      earrings: false,
+      headphones: false,
+      scarf: false,
+      crown: false,
+      backpack: false,
+    },
     hatColor: null,
     capeColor: null,
   },
@@ -137,7 +191,21 @@ const DEFAULT_APPEARANCE: Record<Role, Appearance> = {
     freckles: false,
     blush: true,
     pattern: 'flowers',
-    accessories: { hat: false, cape: false, staff: true },
+    patternColor: null,
+    cheekSticker: 'none',
+    accessories: {
+      hat: false,
+      cape: false,
+      staff: true,
+      glasses: false,
+      flowerCrown: false,
+      bow: false,
+      earrings: false,
+      headphones: false,
+      scarf: false,
+      crown: false,
+      backpack: false,
+    },
     hatColor: null,
     capeColor: null,
   },
@@ -165,7 +233,9 @@ const sanitizeAppearance = (state: AppearanceState | undefined): AppearanceState
       trim: pick(a.trim, d.trim),
       freckles: a.freckles === true,
       blush: a.blush === true,
-      pattern: a.pattern === 'flowers' ? 'flowers' : 'none',
+      pattern: PATTERNS.some((pt) => pt.key === a.pattern) ? a.pattern : 'none',
+      patternColor: isHex(a.patternColor) ? a.patternColor : null,
+      cheekSticker: ['heart', 'star', 'flower'].includes(a.cheekSticker) ? a.cheekSticker : 'none',
       accessories: ACCESSORY_DEFS.reduce(
         (acc, { key }) => ({ ...acc, [key]: a.accessories?.[key] === true }),
         {} as Record<AccessoryKey, boolean>

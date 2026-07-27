@@ -11,6 +11,9 @@ import {
 } from 'react';
 import {
   Appearance,
+  CheekSticker,
+  PATTERNS,
+  patternDefaultColor,
   HABIT_NAME_MAX,
   PATTERN_ROLES,
   Role,
@@ -921,6 +924,24 @@ function WardrobeModal() {
               <Toggle label="Freckles" on={a.freckles} onChange={(v) => set({ freckles: v })} />
               <Toggle label="Blush" on={a.blush} onChange={(v) => set({ blush: v })} />
             </div>
+            <div className="mt-1.5 flex items-center gap-1.5">
+              <span className="text-[10px] text-[#7a6242]">Cheek</span>
+              {(
+                [
+                  ['none', 'None'],
+                  ['heart', '♥'],
+                  ['star', '★'],
+                  ['flower', '✿'],
+                ] as Array<[CheekSticker, string]>
+              ).map(([key, label]) => (
+                <Toggle
+                  key={key}
+                  label={label}
+                  on={a.cheekSticker === key}
+                  onChange={() => set({ cheekSticker: key })}
+                />
+              ))}
+            </div>
           </div>
 
           <div className="mt-2 border-t border-[#dccda9] pt-2">
@@ -966,13 +987,24 @@ function WardrobeModal() {
                 Pattern
               </div>
               <div className="flex flex-wrap gap-1.5">
-                <Toggle label="Plain" on={a.pattern === 'none'} onChange={() => set({ pattern: 'none' })} />
-                <Toggle
-                  label="Flowers"
-                  on={a.pattern === 'flowers'}
-                  onChange={() => set({ pattern: 'flowers' })}
-                />
+                {PATTERNS.map(({ key, label }) => (
+                  <Toggle
+                    key={key}
+                    label={label}
+                    on={a.pattern === key}
+                    onChange={() => set({ pattern: key })}
+                  />
+                ))}
               </div>
+              {a.pattern !== 'none' && (
+                <ColorRow
+                  label="Print"
+                  value={a.patternColor ?? patternDefaultColor(a.pattern, a.trim)}
+                  swatches={SWATCHES.cloth}
+                  onChange={(v) => set({ patternColor: v })}
+                  onAuto={a.patternColor ? () => set({ patternColor: null }) : undefined}
+                />
+              )}
             </div>
           )}
         </div>
