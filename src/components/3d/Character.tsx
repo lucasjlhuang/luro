@@ -263,9 +263,14 @@ function buildLook(role: Role, a: Appearance): Look {
   const gear = a.accessories.staff ? ['weapon'] : [];
   const hide = [
     ...(a.accessories.hat ? [] : ['outfit_hat']),
-    ...(role === 'USER_A' && !a.accessories.cape ? ['outfit_cloak'] : []),
+    ...(a.accessories.cape ? [] : ['outfit_cloak']), // matches nothing on Roro
     ...(a.accessories.staff ? [] : ['weapon']),
   ];
+  // Worn hat/cape follow the outfit until a specific colour is chosen:
+  // Lulu's track his trim, Roro's hood tracks her dress.
+  const followColor = role === 'USER_A' ? a.trim : a.outfit;
+  const hatColor = a.hatColor ?? followColor;
+  const capeColor = a.capeColor ?? followColor;
 
   if (role === 'USER_A') {
     return {
@@ -283,6 +288,8 @@ function buildLook(role: Role, a: Appearance): Look {
           { match: isTunic, to: a.outfit }, // tunic
         ],
         outfit_boots: [{ to: '#141414' }], // shoes
+        ...(a.accessories.hat ? { outfit_hat: [{ to: hatColor }] } : {}),
+        ...(a.accessories.cape ? { outfit_cloak: [{ to: capeColor }] } : {}),
       },
       stamp: faceStamps.length ? { skin_face: faceStamps } : undefined,
     };
@@ -308,6 +315,20 @@ function buildLook(role: Role, a: Appearance): Look {
         where: (p) => p.y > 0.12 && p.y < 0.88,
       },
     ];
+    // the hood is part of the same outfit, so the print continues onto it
+    if (a.accessories.hat) {
+      stamp.outfit_hat = [
+        {
+          kind: 'flower',
+          color: '#EC93B8',
+          count: 26,
+          size: 4.2,
+          opacity: 0.95,
+          seed: 8,
+          where: () => true,
+        },
+      ];
+    }
   }
   return {
     hide,
@@ -318,6 +339,7 @@ function buildLook(role: Role, a: Appearance): Look {
       outfit_body: dress,
       outfit_boots: [{ to: '#000000' }],
       skin_eyes: [{ match: (_h, s2) => s2 >= 0.25, to: a.eyes }],
+      ...(a.accessories.hat ? { outfit_hat: [{ to: hatColor }] } : {}),
     },
     stamp: Object.keys(stamp).length ? stamp : undefined,
   };

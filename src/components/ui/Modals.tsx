@@ -10,11 +10,12 @@ import {
   useState,
 } from 'react';
 import {
-  ACCESSORIES,
   Appearance,
   HABIT_NAME_MAX,
   Role,
   WEEKDAYS,
+  accessoriesFor,
+  accessoryLabel,
   useAppStore,
 } from '../../store/useAppStore';
 import { renderStrokes } from '../../lib/strokes';
@@ -800,11 +801,14 @@ function ColorRow({
   value,
   swatches,
   onChange,
+  onAuto,
 }: {
   label: string;
   value: string;
   swatches: string[];
   onChange: (v: string) => void;
+  /** Present = the colour can follow the outfit; clicking clears the override. */
+  onAuto?: () => void;
 }) {
   return (
     <div className="flex items-center gap-1.5 py-[3px]">
@@ -833,6 +837,15 @@ function ColorRow({
         title="Custom colour"
         className="ml-0.5 h-[16px] w-[22px] shrink-0 cursor-pointer rounded border border-black/15 bg-transparent p-0"
       />
+      {onAuto && (
+        <button
+          onClick={onAuto}
+          title="Follow the outfit colour"
+          className="rounded px-1 text-[9px] font-semibold text-[#a8977a] hover:text-[#7a6242]"
+        >
+          auto
+        </button>
+      )}
     </div>
   );
 }
@@ -914,15 +927,36 @@ function WardrobeModal() {
               Accessories
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {ACCESSORIES.map(({ key, label }) => (
+              {accessoriesFor(tab).map(({ key }) => (
                 <Toggle
                   key={key}
-                  label={label}
+                  label={accessoryLabel(key, tab)}
                   on={a.accessories[key]}
                   onChange={(v) => set({ accessories: { ...a.accessories, [key]: v } })}
                 />
               ))}
             </div>
+            {/* Worn hat/cape gain a colour. Until one is chosen they FOLLOW
+                the outfit — Lulu's track his trim, Roro's hood her dress —
+                and "auto" returns to following. */}
+            {a.accessories.hat && (
+              <ColorRow
+                label={accessoryLabel('hat', tab)}
+                value={a.hatColor ?? (tab === 'USER_A' ? a.trim : a.outfit)}
+                swatches={SWATCHES.cloth}
+                onChange={(v) => set({ hatColor: v })}
+                onAuto={a.hatColor ? () => set({ hatColor: null }) : undefined}
+              />
+            )}
+            {tab === 'USER_A' && a.accessories.cape && (
+              <ColorRow
+                label="Cape"
+                value={a.capeColor ?? a.trim}
+                swatches={SWATCHES.cloth}
+                onChange={(v) => set({ capeColor: v })}
+                onAuto={a.capeColor ? () => set({ capeColor: null }) : undefined}
+              />
+            )}
           </div>
 
           <div className="mt-2 border-t border-[#dccda9] pt-2">

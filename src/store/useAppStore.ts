@@ -57,14 +57,31 @@ export interface Task {
  * Accessories are listed once, here, so the wardrobe panel can render them
  * generically — adding a scarf later means one entry plus its geometry, not a
  * new checkbox wired up by hand.
+ *
+ * `roles` limits who the option is offered to: the packs differ, and a toggle
+ * for a mesh a model does not have (Roro has no cloak) is a lie in the UI.
+ * `label` can differ per role — the same `outfit_hat` mesh is a wizard hat on
+ * Lulu and a hood on Roro.
  */
-export const ACCESSORIES = [
-  { key: 'hat', label: 'Hat' },
-  { key: 'cape', label: 'Cape' },
-  { key: 'staff', label: 'Staff (at work)' },
-] as const;
+export type AccessoryKey = 'hat' | 'cape' | 'staff';
 
-export type AccessoryKey = (typeof ACCESSORIES)[number]['key'];
+export const ACCESSORY_DEFS: Array<{
+  key: AccessoryKey;
+  roles: Role[];
+  label: Partial<Record<Role, string>> & { default: string };
+}> = [
+  { key: 'hat', roles: ['USER_A', 'USER_B'], label: { default: 'Hat', USER_B: 'Hood' } },
+  { key: 'cape', roles: ['USER_A'], label: { default: 'Cape' } },
+  { key: 'staff', roles: ['USER_A', 'USER_B'], label: { default: 'Staff (at work)' } },
+];
+
+export const accessoriesFor = (role: Role) =>
+  ACCESSORY_DEFS.filter((a) => a.roles.includes(role));
+
+export const accessoryLabel = (key: AccessoryKey, role: Role): string => {
+  const def = ACCESSORY_DEFS.find((a) => a.key === key);
+  return def?.label[role] ?? def?.label.default ?? key;
+};
 export type PatternKey = 'none' | 'flowers';
 
 export interface Appearance {
@@ -79,6 +96,14 @@ export interface Appearance {
   blush: boolean;
   pattern: PatternKey;
   accessories: Record<AccessoryKey, boolean>;
+  /**
+   * null = FOLLOW the outfit: Lulu's hat/cape track his trim colour, Roro's
+   * hood tracks her dress, until a specific colour is chosen. Storing a hex at
+   * creation would freeze it — change the trim later and the cape would not
+   * come along.
+   */
+  hatColor: string | null;
+  capeColor: string | null;
 }
 
 /** The looks we arrived at by hand; the panel starts from these. */
@@ -93,6 +118,8 @@ const DEFAULT_APPEARANCE: Record<Role, Appearance> = {
     blush: false,
     pattern: 'none',
     accessories: { hat: false, cape: false, staff: true },
+    hatColor: null,
+    capeColor: null,
   },
   USER_B: {
     hairTop: '#4A250C',
@@ -104,6 +131,8 @@ const DEFAULT_APPEARANCE: Record<Role, Appearance> = {
     blush: true,
     pattern: 'flowers',
     accessories: { hat: false, cape: false, staff: true },
+    hatColor: null,
+    capeColor: null,
   },
 };
 
@@ -130,10 +159,12 @@ const sanitizeAppearance = (state: AppearanceState | undefined): AppearanceState
       freckles: a.freckles === true,
       blush: a.blush === true,
       pattern: a.pattern === 'flowers' ? 'flowers' : 'none',
-      accessories: ACCESSORIES.reduce(
+      accessories: ACCESSORY_DEFS.reduce(
         (acc, { key }) => ({ ...acc, [key]: a.accessories?.[key] === true }),
         {} as Record<AccessoryKey, boolean>
       ),
+      hatColor: isHex(a.hatColor) ? a.hatColor : null,
+      capeColor: isHex(a.capeColor) ? a.capeColor : null,
     };
   };
   return { updatedAt: state?.updatedAt ?? 0, looks: { USER_A: one('USER_A'), USER_B: one('USER_B') } };

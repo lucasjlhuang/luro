@@ -226,6 +226,12 @@ roots + tips, eyes, outfit, trim, freckles/blush/stubble, pattern, accessories.
   3. the height fit must exclude a FIXED list (`NEVER_MEASURED`: hat, cloak,
      weapon), not the current hide list, or toggling an accessory on grows the
      measured box and shrinks the whole character.
+- Accessories are per-ROLE (`ACCESSORY_DEFS.roles`) — Roro's pack has no cloak
+  mesh, so she gets no Cape toggle; the same `outfit_hat` mesh is labelled Hat
+  on Lulu, Hood on Roro. A worn hat/cape gains a colour row whose value is
+  `hatColor/capeColor ?? follow` — null means FOLLOW the outfit (Lulu: trim,
+  Roro: dress) so changing the outfit carries the accessory along; "auto"
+  clears the override. Roro's flower print continues onto the worn hood.
 - The panel's custom colour input commits on BLUR (picker closed), not per
   change — the picker fires dozens of events per second and each would be a
   full 512x512 repaint plus a ~1MB cached CanvasTexture. Swatches are instant.
