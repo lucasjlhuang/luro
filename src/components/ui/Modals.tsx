@@ -12,6 +12,7 @@ import {
 import {
   Appearance,
   HABIT_NAME_MAX,
+  PATTERN_ROLES,
   Role,
   WEEKDAYS,
   accessoriesFor,
@@ -959,19 +960,21 @@ function WardrobeModal() {
             )}
           </div>
 
-          <div className="mt-2 border-t border-[#dccda9] pt-2">
-            <div className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-[#a8977a]">
-              Pattern
+          {PATTERN_ROLES.includes(tab) && (
+            <div className="mt-2 border-t border-[#dccda9] pt-2">
+              <div className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-[#a8977a]">
+                Pattern
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <Toggle label="Plain" on={a.pattern === 'none'} onChange={() => set({ pattern: 'none' })} />
+                <Toggle
+                  label="Flowers"
+                  on={a.pattern === 'flowers'}
+                  onChange={() => set({ pattern: 'flowers' })}
+                />
+              </div>
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              <Toggle label="Plain" on={a.pattern === 'none'} onChange={() => set({ pattern: 'none' })} />
-              <Toggle
-                label="Flowers"
-                on={a.pattern === 'flowers'}
-                onChange={() => set({ pattern: 'flowers' })}
-              />
-            </div>
-          </div>
+          )}
         </div>
       </div>
     </DragShell>

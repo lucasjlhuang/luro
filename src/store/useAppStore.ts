@@ -82,6 +82,13 @@ export const accessoryLabel = (key: AccessoryKey, role: Role): string => {
   const def = ACCESSORY_DEFS.find((a) => a.key === key);
   return def?.label[role] ?? def?.label.default ?? key;
 };
+
+/**
+ * Same principle as ACCESSORY_DEFS.roles, for the pattern print: it is only
+ * implemented for Roro's dress and hood, so Lulu's tab must not offer it.
+ * Extend the list when a character gains a printable garment.
+ */
+export const PATTERN_ROLES: Role[] = ['USER_B'];
 export type PatternKey = 'none' | 'flowers';
 
 export interface Appearance {

@@ -232,6 +232,11 @@ roots + tips, eyes, outfit, trim, freckles/blush/stubble, pattern, accessories.
   `hatColor/capeColor ?? follow` — null means FOLLOW the outfit (Lulu: trim,
   Roro: dress) so changing the outfit carries the accessory along; "auto"
   clears the override. Roro's flower print continues onto the worn hood.
+- The Pattern section is gated by `PATTERN_ROLES` (currently Roro only) — the
+  print is only implemented for her dress/hood, and a control that silently
+  no-ops for a character is a lie in the UI. Same principle as
+  `ACCESSORY_DEFS.roles`; audit new wardrobe options against WHO buildLook
+  actually applies them to.
 - The panel's custom colour input commits on BLUR (picker closed), not per
   change — the picker fires dozens of events per second and each would be a
   full 512x512 repaint plus a ~1MB cached CanvasTexture. Swatches are instant.
