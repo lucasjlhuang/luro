@@ -304,12 +304,15 @@ function buildLook(role: Role, a: Appearance): Look {
   const stamp: Record<string, Stamp[]> = {};
   if (faceStamps.length) stamp.skin_face = faceStamps;
   if (a.pattern === 'flowers') {
+    // Fewer but much bigger: at the size a character renders, 4.6-texel
+    // flowers read as noise. Count drops as size grows or the print tips
+    // from "patterned fabric" into solid pink.
     stamp.outfit_body = [
       {
         kind: 'flower',
         color: '#EC93B8',
-        count: 78,
-        size: 4.6,
+        count: 42,
+        size: 8.5,
         opacity: 0.95,
         seed: 5,
         where: (p) => p.y > 0.12 && p.y < 0.88,
@@ -321,8 +324,8 @@ function buildLook(role: Role, a: Appearance): Look {
         {
           kind: 'flower',
           color: '#EC93B8',
-          count: 26,
-          size: 4.2,
+          count: 14,
+          size: 7.5,
           opacity: 0.95,
           seed: 8,
           where: () => true,
