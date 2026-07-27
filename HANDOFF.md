@@ -232,7 +232,35 @@ roots + tips, eyes, outfit, trim, freckles/blush/stubble, pattern, accessories.
   `hatColor/capeColor ?? follow` — null means FOLLOW the outfit (Lulu: trim,
   Roro: dress) so changing the outfit carries the accessory along; "auto"
   clears the override. Roro's flower print continues onto the worn hood.
-- The Pattern section is gated by `PATTERN_ROLES` (currently Roro only) — the
+- Patterns: flowers/dots/stars/moons are STAMPS (moons = crescent path from two
+  arcs); stripes/plaid are OVERLAYS — per-texel by body position via the texel
+  map, so stripes wrap the body, not the atlas. Both are gated by `on` (pixel
+  hue/sat close to a garment colour AFTER bands ran), which is what keeps a
+  print on Lulu's tunic and off the belt/trousers sharing its mesh.
+  `patternColor` null = patternDefaultColor (pink motifs, trim-coloured weaves).
+- Cheek stickers: one mirrored stamp per cheek (heart/star/flower), sized like
+  blush — the stubble size lesson applies to anything facial.
+- **Accessories** are procedural geometry parented to bones via
+  `ACCESSORY_BUILDERS` (bone regex + MODEL-space target + builder). Placement
+  uses the skeleton's BIND matrices (`boneInverses`), never worldToLocal: the
+  fitted memo re-runs mid-animation and live matrices would place the item
+  wherever the head happened to be that frame. Old `acc:*` children are
+  removed from every bone before re-adding — same clone every run. Both packs
+  share one rig (head bone bind pos y .517 in both), so one target set fits
+  both characters. Builders use plain lit materials, so they dim with the room
+  at night unlike the fullbright characters.
+- **Hearts-when-near** (in Character, variant 'me' only — each app computes its
+  own): burst of 3 billboard hearts at the midpoint every ~2.6s while BOTH are
+  IDLE, connected, and within 0.95 world units. Gated on status, not stream
+  freshness: CHAR_POS stops when someone stops moving, but while both are IDLE
+  the last streamed position IS where they stand; any other status means they
+  teleported to an anchor and the position is stale.
+- **Pyjamas**: `buildLook(role, appearance, night)` — at night the outfit/trim
+  override to navy (`PJ`), pattern forced to stars (Roro) / moons (Lulu) in
+  pale gold, Lulu's belt+buckle softened to navy. Daytime wardrobe state is
+  untouched underneath and returns at sunrise. The fitted memo depends on
+  isNightMode; repaints are cached per config so day/night flips are cheap.
+- The Pattern section is gated by `PATTERN_ROLES` (both roles now) — the
   print is only implemented for her dress/hood, and a control that silently
   no-ops for a character is a lie in the UI. Same principle as
   `ACCESSORY_DEFS.roles`; audit new wardrobe options against WHO buildLook
