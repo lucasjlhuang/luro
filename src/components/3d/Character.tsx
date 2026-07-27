@@ -465,43 +465,12 @@ function finishAccessory(g: THREE.Group): THREE.Group {
   return g;
 }
 
-function buildGlasses(): THREE.Group {
-  const g = new THREE.Group();
-  const frame = ACC_MAT.black();
-  const LENS_W = 0.17;
-  const LENS_H = 0.11;
-  const BAR = 0.04; // ~2 px — as skinny as this room can show
-  const lens = (cx: number) => {
-    const parts: Array<[number, number, number, number]> = [
-      [cx, LENS_H / 2, LENS_W + BAR, BAR],
-      [cx, -LENS_H / 2, LENS_W + BAR, BAR],
-      [cx - LENS_W / 2, 0, BAR, LENS_H],
-      [cx + LENS_W / 2, 0, BAR, LENS_H],
-    ];
-    for (const [x, y, w, h] of parts) {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, BAR), frame);
-      m.position.set(x, y, 0);
-      g.add(m);
-    }
-  };
-  lens(-LENS_W / 2 - 0.02);
-  lens(LENS_W / 2 + 0.02);
-  g.add(new THREE.Mesh(new THREE.BoxGeometry(0.06, BAR, BAR), frame));
-  for (const side of [-1, 1]) {
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(BAR, BAR, 0.3), frame);
-    arm.position.set(side * (LENS_W + 0.045), 0.015, 0.14);
-    arm.rotation.y = side * 0.1;
-    g.add(arm);
-  }
-  return finishAccessory(g);
-}
-
 function buildFlowerCrown(): THREE.Group {
   const g = new THREE.Group();
   const petal = ACC_MAT.pink();
   const centre = ACC_MAT.gold();
   const leaf = ACC_MAT.leaf();
-  const R = 0.4; // clears the hair ball
+  const R = 0.3; // nestles into the upper hair dome — full clearance read as a hoop
   const band = new THREE.Mesh(new THREE.TorusGeometry(R, 0.035, 8, 28), leaf);
   band.rotation.x = Math.PI / 2;
   g.add(band);
@@ -536,46 +505,6 @@ function buildBow(): THREE.Group {
   return finishAccessory(g);
 }
 
-function buildEarrings(): THREE.Group {
-  const g = new THREE.Group();
-  const gold = ACC_MAT.gold();
-  for (const side of [-1, 1]) {
-    // dangling below the hair line, just outside its x envelope
-    const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.018, 8, 16), gold);
-    hoop.position.set(side * 0.42, -0.04, 0);
-    g.add(hoop);
-    const stud = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), gold);
-    stud.position.set(side * 0.42, 0.03, 0);
-    g.add(stud);
-  }
-  return finishAccessory(g);
-}
-
-function buildHeadphones(): THREE.Group {
-  const g = new THREE.Group();
-  const grey = ACC_MAT.grey();
-  const silver = ACC_MAT.silver();
-  // band arched OVER the hair, apex above y 1.21
-  for (let i = 0; i <= 8; i += 1) {
-    const t = i / 8 - 0.5;
-    const seg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.06, 0.09), grey);
-    seg.position.set(t * 1.0, 0.48 - t * t * 1.7, 0);
-    seg.rotation.z = -t * 1.3;
-    g.add(seg);
-  }
-  for (const side of [-1, 1]) {
-    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.09, 14), grey);
-    cup.rotation.z = Math.PI / 2;
-    cup.position.set(side * 0.44, -0.14, 0);
-    g.add(cup);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.022, 8, 18), silver);
-    ring.rotation.y = Math.PI / 2;
-    ring.position.set(side * 0.49, -0.14, 0);
-    g.add(ring);
-  }
-  return finishAccessory(g);
-}
-
 function buildScarf(): THREE.Group {
   const g = new THREE.Group();
   const red = ACC_MAT.red();
@@ -605,21 +534,6 @@ function buildCrown(): THREE.Group {
   return finishAccessory(g);
 }
 
-function buildBackpack(): THREE.Group {
-  const g = new THREE.Group();
-  const brown = ACC_MAT.brown();
-  const flap = new THREE.MeshStandardMaterial({ color: '#a5754f', roughness: 0.7 });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.4, 0.18), brown);
-  g.add(body);
-  const lid = new THREE.Mesh(new THREE.BoxGeometry(0.37, 0.14, 0.19), flap);
-  lid.position.set(0, 0.16, 0);
-  g.add(lid);
-  const pocket = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.16, 0.06), flap);
-  pocket.position.set(0, -0.08, 0.11);
-  g.add(pocket);
-  return finishAccessory(g);
-}
-
 /**
  * Bone + model-space target per accessory. `hat`/`cape`/`staff` are real pack
  * meshes handled by hide/gear, so they have no builder here. Targets respect
@@ -628,18 +542,11 @@ function buildBackpack(): THREE.Group {
 const ACCESSORY_BUILDERS: Partial<
   Record<AccessoryKey, { bone: RegExp; target: [number, number, number]; build: () => THREE.Group }>
 > = {
-  // The dot is OPTIONAL on purpose: the GLB names this bone 'Head.head.001'
-  // but GLTFLoader runs every node name through sanitizeNodeName, which
-  // STRIPS '[ ] . : /' — so at runtime it is 'Headhead001_0109'. Requiring
-  // the dot matched nothing and every accessory silently failed to attach.
-  glasses: { bone: /head\.?head/i, target: [0, 0.7, -0.3], build: buildGlasses },
-  flowerCrown: { bone: /head\.?head/i, target: [0, 1.06, 0.02], build: buildFlowerCrown },
+  flowerCrown: { bone: /head\.?head/i, target: [0, 1.1, 0.02], build: buildFlowerCrown },
   bow: { bone: /head\.?head/i, target: [0.3, 1.1, 0.05], build: buildBow },
-  earrings: { bone: /head\.?head/i, target: [0, 0.56, -0.02], build: buildEarrings },
-  headphones: { bone: /head\.?head/i, target: [0, 0.78, 0.0], build: buildHeadphones },
   scarf: { bone: /head\.?neck/i, target: [0, 0.5, 0], build: buildScarf },
-  crown: { bone: /head\.?head/i, target: [0, 1.24, 0.02], build: buildCrown },
-  backpack: { bone: /head\.?neck/i, target: [0, 0.26, 0.3], build: buildBackpack },
+  // y 1.24 hovered above the dome; 1.13 lets the band bite into the hair top
+  crown: { bone: /head\.?head/i, target: [0, 1.13, 0.02], build: buildCrown },
 };
 
 /* ------------------------- texture repainting ------------------------- */

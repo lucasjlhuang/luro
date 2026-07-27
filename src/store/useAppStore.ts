@@ -67,14 +67,10 @@ export type AccessoryKey =
   | 'hat'
   | 'cape'
   | 'staff'
-  | 'glasses'
   | 'flowerCrown'
   | 'bow'
-  | 'earrings'
-  | 'headphones'
   | 'scarf'
-  | 'crown'
-  | 'backpack';
+  | 'crown';
 
 export const ACCESSORY_DEFS: Array<{
   key: AccessoryKey;
@@ -84,14 +80,10 @@ export const ACCESSORY_DEFS: Array<{
   { key: 'hat', roles: ['USER_A', 'USER_B'], label: { default: 'Hat', USER_B: 'Hood' } },
   { key: 'cape', roles: ['USER_A'], label: { default: 'Cape' } },
   { key: 'staff', roles: ['USER_A', 'USER_B'], label: { default: 'Staff (at work)' } },
-  { key: 'glasses', roles: ['USER_A', 'USER_B'], label: { default: 'Glasses' } },
   { key: 'flowerCrown', roles: ['USER_A', 'USER_B'], label: { default: 'Flower crown' } },
   { key: 'bow', roles: ['USER_A', 'USER_B'], label: { default: 'Hair bow' } },
-  { key: 'earrings', roles: ['USER_A', 'USER_B'], label: { default: 'Earrings' } },
-  { key: 'headphones', roles: ['USER_A', 'USER_B'], label: { default: 'Headphones' } },
   { key: 'scarf', roles: ['USER_A', 'USER_B'], label: { default: 'Scarf' } },
   { key: 'crown', roles: ['USER_A', 'USER_B'], label: { default: 'Crown' } },
-  { key: 'backpack', roles: ['USER_A', 'USER_B'], label: { default: 'Backpack' } },
 ];
 
 export const accessoriesFor = (role: Role) =>
@@ -166,14 +158,10 @@ const DEFAULT_APPEARANCE: Record<Role, Appearance> = {
       hat: false,
       cape: false,
       staff: true,
-      glasses: false,
       flowerCrown: false,
       bow: false,
-      earrings: false,
-      headphones: false,
       scarf: false,
       crown: false,
-      backpack: false,
     },
     hatColor: null,
     capeColor: null,
@@ -192,14 +180,10 @@ const DEFAULT_APPEARANCE: Record<Role, Appearance> = {
       hat: false,
       cape: false,
       staff: true,
-      glasses: false,
       flowerCrown: false,
       bow: false,
-      earrings: false,
-      headphones: false,
       scarf: false,
       crown: false,
-      backpack: false,
     },
     hatColor: null,
     capeColor: null,
