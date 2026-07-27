@@ -472,7 +472,7 @@ function buildFlowerCrown(role: Role): THREE.Group {
   const leaf = ACC_MAT.leaf();
   // nestles into the upper hair dome — full clearance read as a hoop.
   // Roro's hair ball is wider, so her ring runs slightly larger.
-  const R = role === 'USER_B' ? 0.38 : 0.3;
+  const R = role === 'USER_B' ? 0.36 : 0.3;
   const band = new THREE.Mesh(new THREE.TorusGeometry(R, 0.035, 8, 28), leaf);
   band.rotation.x = Math.PI / 2;
   g.add(band);
@@ -542,7 +542,7 @@ const ACCESSORY_BUILDERS: Partial<
   // names (PropertyBinding.sanitizeNodeName), so the GLB's 'Head.head.001' is
   // 'Headhead001' at runtime — a required dot matches no bone at all.
   flowerCrown: { bone: /head\.?head/i, target: [0, 0.9, 0.02], build: buildFlowerCrown }, // 10px down per request
-  bow: { bone: /head\.?head/i, target: [0.3, 1.1, 0.05], build: buildBow },
+  bow: { bone: /head\.?head/i, target: [0.3, 1.0, 0.05], build: buildBow }, // 5px down
   scarf: { bone: /head\.?neck/i, target: [0, 0.5, 0], build: buildScarf },
 };
 
