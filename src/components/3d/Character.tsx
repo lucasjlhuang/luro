@@ -492,16 +492,20 @@ function buildFlowerCrown(): THREE.Group {
 }
 
 function buildBow(): THREE.Group {
+  // "Hair bow" is a single flower now — one bloom pinned to the hair,
+  // matching the flower-crown clusters but big enough to stand alone.
   const g = new THREE.Group();
-  const pink = ACC_MAT.pink();
-  for (const side of [-1, 1]) {
-    const loop = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.11, 0.09), pink);
-    loop.position.set(side * 0.1, 0, 0);
-    loop.rotation.z = side * 0.5;
-    g.add(loop);
+  const petal = ACC_MAT.pink();
+  const centre = ACC_MAT.gold();
+  for (let k = 0; k < 5; k += 1) {
+    const a = (k / 5) * Math.PI * 2;
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.075, 10, 10), petal);
+    m.position.set(Math.cos(a) * 0.095, Math.sin(a) * 0.085, 0);
+    g.add(m);
   }
-  const knot = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 10), pink);
-  g.add(knot);
+  const c = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 10), centre);
+  c.position.set(0, 0, 0.02);
+  g.add(c);
   return finishAccessory(g);
 }
 
@@ -518,22 +522,6 @@ function buildScarf(): THREE.Group {
   return finishAccessory(g);
 }
 
-function buildCrown(): THREE.Group {
-  const g = new THREE.Group();
-  const gold = ACC_MAT.gold();
-  const R = 0.26;
-  const band = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 0.12, 18, 1, true), gold);
-  band.material.side = THREE.DoubleSide;
-  g.add(band);
-  for (let i = 0; i < 5; i += 1) {
-    const a = (i / 5) * Math.PI * 2;
-    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.16, 6), gold);
-    spike.position.set(Math.cos(a) * R, 0.13, Math.sin(a) * R);
-    g.add(spike);
-  }
-  return finishAccessory(g);
-}
-
 /**
  * Bone + model-space target per accessory. `hat`/`cape`/`staff` are real pack
  * meshes handled by hide/gear, so they have no builder here. Targets respect
@@ -545,11 +533,9 @@ const ACCESSORY_BUILDERS: Partial<
   // The dot is OPTIONAL on purpose: GLTFLoader strips '[ ] . : /' from node
   // names (PropertyBinding.sanitizeNodeName), so the GLB's 'Head.head.001' is
   // 'Headhead001' at runtime — a required dot matches no bone at all.
-  flowerCrown: { bone: /head\.?head/i, target: [0, 1.1, 0.02], build: buildFlowerCrown },
+  flowerCrown: { bone: /head\.?head/i, target: [0, 0.9, 0.02], build: buildFlowerCrown }, // 10px down per request
   bow: { bone: /head\.?head/i, target: [0.3, 1.1, 0.05], build: buildBow },
   scarf: { bone: /head\.?neck/i, target: [0, 0.5, 0], build: buildScarf },
-  // y 1.24 hovered above the dome; 1.13 lets the band bite into the hair top
-  crown: { bone: /head\.?head/i, target: [0, 1.13, 0.02], build: buildCrown },
 };
 
 /* ------------------------- texture repainting ------------------------- */

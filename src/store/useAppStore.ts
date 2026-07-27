@@ -69,8 +69,7 @@ export type AccessoryKey =
   | 'staff'
   | 'flowerCrown'
   | 'bow'
-  | 'scarf'
-  | 'crown';
+  | 'scarf';
 
 export const ACCESSORY_DEFS: Array<{
   key: AccessoryKey;
@@ -81,9 +80,8 @@ export const ACCESSORY_DEFS: Array<{
   { key: 'cape', roles: ['USER_A'], label: { default: 'Cape' } },
   { key: 'staff', roles: ['USER_A', 'USER_B'], label: { default: 'Staff (at work)' } },
   { key: 'flowerCrown', roles: ['USER_A', 'USER_B'], label: { default: 'Flower crown' } },
-  { key: 'bow', roles: ['USER_A', 'USER_B'], label: { default: 'Hair bow' } },
+  { key: 'bow', roles: ['USER_A', 'USER_B'], label: { default: 'Hair flower' } },
   { key: 'scarf', roles: ['USER_A', 'USER_B'], label: { default: 'Scarf' } },
-  { key: 'crown', roles: ['USER_A', 'USER_B'], label: { default: 'Crown' } },
 ];
 
 export const accessoriesFor = (role: Role) =>
@@ -161,7 +159,6 @@ const DEFAULT_APPEARANCE: Record<Role, Appearance> = {
       flowerCrown: false,
       bow: false,
       scarf: false,
-      crown: false,
     },
     hatColor: null,
     capeColor: null,
@@ -183,7 +180,6 @@ const DEFAULT_APPEARANCE: Record<Role, Appearance> = {
       flowerCrown: false,
       bow: false,
       scarf: false,
-      crown: false,
     },
     hatColor: null,
     capeColor: null,
