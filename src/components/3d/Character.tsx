@@ -256,7 +256,9 @@ function garmentPattern(
   seed: number,
   scale = 1,
   /** Enlarges the motif without adding more of them — count shrinks to match. */
-  sizeMul = 1
+  sizeMul = 1,
+  /** More motifs at the same size — used to fill Roro's pyjama front. */
+  countMul = 1
 ): { stamps: Stamp[]; overlays: Overlay[] } {
   const stamps: Stamp[] = [];
   const overlays: Overlay[] = [];
@@ -268,7 +270,7 @@ function garmentPattern(
       kind,
       color,
       on,
-      count: Math.max(6, Math.round((count * scale) / sizeMul)),
+      count: Math.max(6, Math.round((count * scale * countMul) / sizeMul)),
       size: size * scale * sizeMul,
       minDist: size * scale * sizeMul * spacing,
       opacity: 0.95,
@@ -276,8 +278,7 @@ function garmentPattern(
       where: anywhere,
     });
   if (a.pattern === 'flowers') motif('flower', 36, 12.8, 0);
-  else if (a.pattern === 'dots') motif('dot', 46, 7.5, 2.8);
-  else if (a.pattern === 'stars') motif('star', 34, 10, 2.6);
+  else if (a.pattern === 'stars') motif('star', 34, 10, 2.2);
   else if (a.pattern === 'moons') motif('moon', 30, 9, 2.8);
   else overlays.push({ kind: a.pattern, color, on });
   return { stamps, overlays };
@@ -397,7 +398,9 @@ function buildLook(role: Role, a: Appearance, night = false): Look {
   const stamp: Record<string, Stamp[]> = {};
   if (faceStamps.length) stamp.skin_face = faceStamps;
   const pjMul2 = night ? 2 : 1;
-  const dressPat = garmentPattern(a, a.outfit, 5, 1, pjMul2);
+  // countMul 1.8 at night: uniform atlas sampling left her chest and belly
+  // almost bare at the doubled size — more stars, same size, fills the front
+  const dressPat = garmentPattern(a, a.outfit, 5, 1, pjMul2, night ? 1.8 : 1);
   const hoodPat = a.accessories.hat
     ? garmentPattern(a, hatColor, 8, 0.8, pjMul2)
     : { stamps: [], overlays: [] };
@@ -625,14 +628,18 @@ function buildBackpack(): THREE.Group {
 const ACCESSORY_BUILDERS: Partial<
   Record<AccessoryKey, { bone: RegExp; target: [number, number, number]; build: () => THREE.Group }>
 > = {
-  glasses: { bone: /head\.head/i, target: [0, 0.7, -0.3], build: buildGlasses },
-  flowerCrown: { bone: /head\.head/i, target: [0, 1.06, 0.02], build: buildFlowerCrown },
-  bow: { bone: /head\.head/i, target: [0.3, 1.1, 0.05], build: buildBow },
-  earrings: { bone: /head\.head/i, target: [0, 0.56, -0.02], build: buildEarrings },
-  headphones: { bone: /head\.head/i, target: [0, 0.78, 0.0], build: buildHeadphones },
-  scarf: { bone: /head\.neck/i, target: [0, 0.5, 0], build: buildScarf },
-  crown: { bone: /head\.head/i, target: [0, 1.24, 0.02], build: buildCrown },
-  backpack: { bone: /head\.neck/i, target: [0, 0.26, 0.3], build: buildBackpack },
+  // The dot is OPTIONAL on purpose: the GLB names this bone 'Head.head.001'
+  // but GLTFLoader runs every node name through sanitizeNodeName, which
+  // STRIPS '[ ] . : /' — so at runtime it is 'Headhead001_0109'. Requiring
+  // the dot matched nothing and every accessory silently failed to attach.
+  glasses: { bone: /head\.?head/i, target: [0, 0.7, -0.3], build: buildGlasses },
+  flowerCrown: { bone: /head\.?head/i, target: [0, 1.06, 0.02], build: buildFlowerCrown },
+  bow: { bone: /head\.?head/i, target: [0.3, 1.1, 0.05], build: buildBow },
+  earrings: { bone: /head\.?head/i, target: [0, 0.56, -0.02], build: buildEarrings },
+  headphones: { bone: /head\.?head/i, target: [0, 0.78, 0.0], build: buildHeadphones },
+  scarf: { bone: /head\.?neck/i, target: [0, 0.5, 0], build: buildScarf },
+  crown: { bone: /head\.?head/i, target: [0, 1.24, 0.02], build: buildCrown },
+  backpack: { bone: /head\.?neck/i, target: [0, 0.26, 0.3], build: buildBackpack },
 };
 
 /* ------------------------- texture repainting ------------------------- */
@@ -1699,7 +1706,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
     let head: THREE.Object3D | null = null;
     scene.traverse((obj) => {
       if (head) return;
-      if (/head\.head/i.test(obj.name)) head = obj;
+      if (/head\.?head/i.test(obj.name)) head = obj; // dot stripped by GLTFLoader
     });
     if (!head) scene.traverse((obj) => { if (!head && /head/i.test(obj.name)) head = obj; });
 

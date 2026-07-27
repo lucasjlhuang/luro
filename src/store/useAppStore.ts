@@ -108,14 +108,13 @@ export const accessoryLabel = (key: AccessoryKey, role: Role): string => {
  * Extend the list when a character gains a printable garment.
  */
 export const PATTERN_ROLES: Role[] = ['USER_A', 'USER_B'];
-export type PatternKey = 'none' | 'flowers' | 'dots' | 'stars' | 'moons' | 'stripes' | 'plaid';
+/** 'stars' and 'moons' are PYJAMA-ONLY: the night look sets them internally
+ * (stars on Roro, moons on Lulu) and the picker never offers them. */
+export type PatternKey = 'none' | 'flowers' | 'stars' | 'moons' | 'stripes' | 'plaid';
 
 export const PATTERNS: Array<{ key: PatternKey; label: string }> = [
   { key: 'none', label: 'Plain' },
   { key: 'flowers', label: 'Flowers' },
-  { key: 'dots', label: 'Dots' },
-  { key: 'stars', label: 'Stars' },
-  { key: 'moons', label: 'Moons' },
   { key: 'stripes', label: 'Stripes' },
   { key: 'plaid', label: 'Plaid' },
 ];

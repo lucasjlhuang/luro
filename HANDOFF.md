@@ -271,6 +271,17 @@ roots + tips, eyes, outfit, trim, freckles/blush/stubble, pattern, accessories.
   head accessories must clear it (crowns perch above 1.21, rings r>=0.40,
   earrings dangle below the hair line, headphone band arches over the top).
   Attach math itself was verified correct via the bind matrices.
+- **GLTFLoader STRIPS '[ ] . : /' from every node name** (PropertyBinding.
+  sanitizeNodeName), so the GLB's 'Head.head.001_0109' is 'Headhead001_0109'
+  at runtime. Bone regexes must make the dot optional (/head\.?head/i) — the
+  dotted form matched nothing and accessories silently never attached, which
+  was the TRUE root cause of them being invisible (the size/hair rules above
+  were real but secondary). Any future name-matching against bones or nodes
+  must assume sanitized names.
+- Pattern picker offers none/flowers/stripes/plaid for BOTH characters; 'stars'
+  and 'moons' exist only as pyjama internals (dots removed entirely). Roro's
+  night stars use countMul 1.8 — uniform atlas sampling left her chest/belly
+  bare at the doubled size.
 - Pyjama prints run through garmentPattern's `sizeMul` (2 at night): doubles
   motif size, halves count. Cheek stickers were built and REMOVED at the
   user's request.
