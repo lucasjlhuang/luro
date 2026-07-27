@@ -647,12 +647,20 @@ function repaintTexture(
             ctx.fillStyle = st.color;
             const seed = st.seed ?? 1;
             let placed = 0;
-            for (let i = 0; i < st.count * 40 && placed < st.count; i += 1) {
+            // Poisson-style spacing: pure uniform sampling CLUMPS — piles in
+            // one place, bare patches elsewhere — so candidates too close to
+            // an already-placed stamp are rejected. Even scatter, no merging.
+            const pts: Array<[number, number]> = [];
+            const minD = st.kind === 'flower' ? st.size * 2.6 : 0;
+            for (let i = 0; i < st.count * 80 && placed < st.count; i += 1) {
               const px = Math.floor(hashRand(seed * 7919 + i * 2) * w);
               const py = Math.floor(hashRand(seed * 104729 + i * 3) * h);
               const p = py * w + px;
               if (!tmap.used[p]) continue;
               if (!st.where({ x: tmap.x[p], y: tmap.y[p], z: tmap.z[p] })) continue;
+              if (minD && pts.some(([qx, qy]) => (qx - px) ** 2 + (qy - py) ** 2 < minD * minD))
+                continue;
+              pts.push([px, py]);
               placed += 1;
               if (st.kind === 'dot') {
                 const r = st.size * (0.7 + hashRand(seed + i * 5) * 0.6);
@@ -660,19 +668,12 @@ function repaintTexture(
                 ctx.arc(px, py, r, 0, Math.PI * 2);
                 ctx.fill();
               } else {
-                // Each flower varies: wide size spread, 5 or 6 petals, and a
-                // per-flower shade of the base pink — identical stamps read as
-                // wallpaper, not printed fabric.
+                // One pink, varied geometry: size spread, rotation, and 5 or
+                // 6 petals — the variation lives in the PLACEMENT and shape,
+                // not the colour.
                 const r = st.size * (0.55 + hashRand(seed + i * 5) * 0.9);
-                const baseN = parseInt(st.color.slice(1), 16);
-                const [bH, bS, bL] = rgbToHsl((baseN >> 16) & 255, (baseN >> 8) & 255, baseN & 255);
-                const [fr, fg, fb] = hslToRgb(
-                  bH + (hashRand(seed + i * 13) - 0.5) * 10,
-                  bS,
-                  Math.min(0.92, Math.max(0.35, bL + (hashRand(seed + i * 17) - 0.5) * 0.16))
-                );
                 ctx.save();
-                ctx.fillStyle = `rgb(${fr | 0},${fg | 0},${fb | 0})`;
+                ctx.fillStyle = st.color;
                 const petals = hashRand(seed + i * 19) < 0.3 ? 6 : 5;
                 const rot = hashRand(seed + i * 11) * Math.PI * 2;
                 for (let k = 0; k < petals; k += 1) {
