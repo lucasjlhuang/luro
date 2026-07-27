@@ -254,36 +254,32 @@ function garmentPattern(
   a: Appearance,
   on: string,
   seed: number,
-  scale = 1
+  scale = 1,
+  /** Enlarges the motif without adding more of them — count shrinks to match. */
+  sizeMul = 1
 ): { stamps: Stamp[]; overlays: Overlay[] } {
   const stamps: Stamp[] = [];
   const overlays: Overlay[] = [];
   if (a.pattern === 'none') return { stamps, overlays };
   const color = a.patternColor ?? patternDefaultColor(a.pattern, a.trim);
   const anywhere = (p: { y: number }) => p.y > 0.05 && p.y < 0.95;
-  if (a.pattern === 'flowers') {
+  const motif = (kind: Stamp['kind'], count: number, size: number, spacing: number) =>
     stamps.push({
-      kind: 'flower', color, on, count: Math.round(36 * scale), size: 12.8 * scale,
-      opacity: 0.95, seed, where: anywhere,
+      kind,
+      color,
+      on,
+      count: Math.max(6, Math.round((count * scale) / sizeMul)),
+      size: size * scale * sizeMul,
+      minDist: size * scale * sizeMul * spacing,
+      opacity: 0.95,
+      seed,
+      where: anywhere,
     });
-  } else if (a.pattern === 'dots') {
-    stamps.push({
-      kind: 'dot', color, on, count: Math.round(46 * scale), size: 7.5 * scale,
-      minDist: 7.5 * scale * 2.8, opacity: 0.95, seed, where: anywhere,
-    });
-  } else if (a.pattern === 'stars') {
-    stamps.push({
-      kind: 'star', color, on, count: Math.round(34 * scale), size: 10 * scale,
-      minDist: 10 * scale * 2.6, opacity: 0.95, seed, where: anywhere,
-    });
-  } else if (a.pattern === 'moons') {
-    stamps.push({
-      kind: 'moon', color, on, count: Math.round(30 * scale), size: 9 * scale,
-      minDist: 9 * scale * 2.8, opacity: 0.95, seed, where: anywhere,
-    });
-  } else {
-    overlays.push({ kind: a.pattern, color, on });
-  }
+  if (a.pattern === 'flowers') motif('flower', 36, 12.8, 0);
+  else if (a.pattern === 'dots') motif('dot', 46, 7.5, 2.8);
+  else if (a.pattern === 'stars') motif('star', 34, 10, 2.6);
+  else if (a.pattern === 'moons') motif('moon', 30, 9, 2.8);
+  else overlays.push({ kind: a.pattern, color, on });
   return { stamps, overlays };
 }
 
@@ -343,29 +339,6 @@ function buildLook(role: Role, a: Appearance, night = false): Look {
     });
   }
 
-  if (a.cheekSticker !== 'none') {
-    // one sticker per cheek, mirrored; sized like blush so it survives the
-    // character's on-screen size (the stubble lesson)
-    const kind = a.cheekSticker;
-    for (const side of [-1, 1] as const) {
-      faceStamps.push({
-        kind,
-        color: '#F473A0',
-        count: 1,
-        size: 5.4,
-        opacity: 0.9,
-        seed: side > 0 ? 41 : 43,
-        where: (p) =>
-          p.z < 0.28 &&
-          p.y > 0.19 &&
-          p.y < 0.3 &&
-          (side < 0
-            ? p.x - 0.5 < -0.11 && p.x - 0.5 > -0.25
-            : p.x - 0.5 > 0.11 && p.x - 0.5 < 0.25),
-      });
-    }
-  }
-
   const gear = a.accessories.staff ? ['weapon'] : [];
   const hide = [
     ...(a.accessories.hat ? [] : ['outfit_hat']),
@@ -379,8 +352,11 @@ function buildLook(role: Role, a: Appearance, night = false): Look {
   const capeColor = a.capeColor ?? followColor;
 
   if (role === 'USER_A') {
-    const tunicPat = garmentPattern(a, a.outfit, 21);
-    const capePat = a.accessories.cape ? garmentPattern(a, capeColor, 23, 0.9) : { stamps: [], overlays: [] };
+    const pjMul = night ? 2 : 1; // at 50px tall, pyjama stars/moons need to be BIG
+    const tunicPat = garmentPattern(a, a.outfit, 21, 1, pjMul);
+    const capePat = a.accessories.cape
+      ? garmentPattern(a, capeColor, 23, 0.9, pjMul)
+      : { stamps: [], overlays: [] };
     const stampA: Record<string, Stamp[]> = {};
     if (faceStamps.length) stampA.skin_face = faceStamps;
     const bodyStampsA = [...tunicPat.stamps];
@@ -420,8 +396,11 @@ function buildLook(role: Role, a: Appearance, night = false): Look {
   ];
   const stamp: Record<string, Stamp[]> = {};
   if (faceStamps.length) stamp.skin_face = faceStamps;
-  const dressPat = garmentPattern(a, a.outfit, 5);
-  const hoodPat = a.accessories.hat ? garmentPattern(a, hatColor, 8, 0.8) : { stamps: [], overlays: [] };
+  const pjMul2 = night ? 2 : 1;
+  const dressPat = garmentPattern(a, a.outfit, 5, 1, pjMul2);
+  const hoodPat = a.accessories.hat
+    ? garmentPattern(a, hatColor, 8, 0.8, pjMul2)
+    : { stamps: [], overlays: [] };
   if (dressPat.stamps.length) stamp.outfit_body = dressPat.stamps;
   if (hoodPat.stamps.length) stamp.outfit_hat = hoodPat.stamps;
   const overlayB: Record<string, Overlay[]> = {};
@@ -448,10 +427,18 @@ function buildLook(role: Role, a: Appearance, night = false): Look {
 /**
  * Every accessory is procedural geometry parented to a BONE, so animation
  * carries it with no per-frame work. Positions are MODEL-space targets
- * converted into bone-local space via the bind pose (both packs share one
- * rig, so one set of coordinates fits Lulu and Roro alike): head mesh spans
- * y 0.47..1.04, x +/-0.40; the hair ball reaches ~+/-0.45; face front at
- * z ~ -0.26 (models face -z).
+ * converted into bone-local space via the bind pose; both packs share one rig,
+ * so one set of coordinates fits Lulu and Roro alike.
+ *
+ * TWO HARD-WON SIZING RULES (the first pass got both wrong and every
+ * accessory was invisible):
+ * - The room renders at ~45 px per world unit and the characters at ~50 px
+ *   tall. Any member thinner than ~0.04 units is under 2 px — the original
+ *   0.011-unit glasses frames drew at half a pixel. Nothing goes below 0.04.
+ * - The HAIR is enormous: y 0.43..1.21, x/z to +/-0.40. Anything placed
+ *   "on the head" at smaller radii is swallowed whole — crowns must perch
+ *   ABOVE y 1.21, rings must clear radius 0.40, earrings must dangle BELOW
+ *   the hair line, and the headphone band must arch OVER the top.
  */
 const ACC_MAT = {
   black: () => new THREE.MeshStandardMaterial({ color: '#141414', roughness: 0.35, metalness: 0.45 }),
@@ -464,36 +451,46 @@ const ACC_MAT = {
   brown: () => new THREE.MeshStandardMaterial({ color: '#8a5a3b', roughness: 0.7 }),
 };
 
+/** Shadows on, culling off — bone-parented bounds mislead the frustum test. */
+function finishAccessory(g: THREE.Group): THREE.Group {
+  g.traverse((o) => {
+    if (o instanceof THREE.Mesh) {
+      o.castShadow = true;
+      o.frustumCulled = false;
+    }
+  });
+  return g;
+}
+
 function buildGlasses(): THREE.Group {
   const g = new THREE.Group();
   const frame = ACC_MAT.black();
-  const LENS_W = 0.145;
-  const LENS_H = 0.085;
-  const BAR = 0.011; // skinny frames
+  const LENS_W = 0.17;
+  const LENS_H = 0.11;
+  const BAR = 0.04; // ~2 px — as skinny as this room can show
   const lens = (cx: number) => {
     const parts: Array<[number, number, number, number]> = [
-      [cx, LENS_H / 2, LENS_W, BAR],
-      [cx, -LENS_H / 2, LENS_W, BAR],
-      [cx - LENS_W / 2, 0, BAR, LENS_H + BAR],
-      [cx + LENS_W / 2, 0, BAR, LENS_H + BAR],
+      [cx, LENS_H / 2, LENS_W + BAR, BAR],
+      [cx, -LENS_H / 2, LENS_W + BAR, BAR],
+      [cx - LENS_W / 2, 0, BAR, LENS_H],
+      [cx + LENS_W / 2, 0, BAR, LENS_H],
     ];
     for (const [x, y, w, h] of parts) {
       const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, BAR), frame);
       m.position.set(x, y, 0);
-      m.castShadow = true;
       g.add(m);
     }
   };
-  lens(-LENS_W / 2 - 0.016);
-  lens(LENS_W / 2 + 0.016);
-  g.add(new THREE.Mesh(new THREE.BoxGeometry(0.032, BAR, BAR), frame));
+  lens(-LENS_W / 2 - 0.02);
+  lens(LENS_W / 2 + 0.02);
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(0.06, BAR, BAR), frame));
   for (const side of [-1, 1]) {
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(BAR, BAR, 0.17), frame);
-    arm.position.set(side * (LENS_W + 0.024), 0.012, 0.085);
-    arm.rotation.y = side * 0.12;
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(BAR, BAR, 0.3), frame);
+    arm.position.set(side * (LENS_W + 0.045), 0.015, 0.14);
+    arm.rotation.y = side * 0.1;
     g.add(arm);
   }
-  return g;
+  return finishAccessory(g);
 }
 
 function buildFlowerCrown(): THREE.Group {
@@ -501,8 +498,8 @@ function buildFlowerCrown(): THREE.Group {
   const petal = ACC_MAT.pink();
   const centre = ACC_MAT.gold();
   const leaf = ACC_MAT.leaf();
-  const R = 0.33; // sits around the hair ball
-  const band = new THREE.Mesh(new THREE.TorusGeometry(R, 0.016, 8, 28), leaf);
+  const R = 0.4; // clears the hair ball
+  const band = new THREE.Mesh(new THREE.TorusGeometry(R, 0.035, 8, 28), leaf);
   band.rotation.x = Math.PI / 2;
   g.add(band);
   for (let i = 0; i < 8; i += 1) {
@@ -511,131 +508,131 @@ function buildFlowerCrown(): THREE.Group {
     const fz = Math.sin(a) * R;
     for (let k = 0; k < 5; k += 1) {
       const pa = (k / 5) * Math.PI * 2;
-      const m = new THREE.Mesh(new THREE.SphereGeometry(0.026, 8, 8), petal);
-      m.position.set(fx + Math.cos(pa) * 0.032, Math.sin(pa) * 0.032 * 0.4, fz + Math.sin(pa) * 0.02);
+      const m = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 8), petal);
+      m.position.set(fx + Math.cos(pa) * 0.07, Math.sin(pa) * 0.03, fz + Math.sin(pa) * 0.05);
       g.add(m);
     }
-    const c = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 8), centre);
-    c.position.set(fx, 0.012, fz);
+    const c = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), centre);
+    c.position.set(fx, 0.02, fz);
     g.add(c);
   }
-  return g;
+  return finishAccessory(g);
 }
 
 function buildBow(): THREE.Group {
   const g = new THREE.Group();
   const pink = ACC_MAT.pink();
   for (const side of [-1, 1]) {
-    const loop = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.07, 0.03), pink);
-    loop.position.set(side * 0.065, 0, 0);
-    loop.rotation.z = side * 0.55;
-    loop.castShadow = true;
+    const loop = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.11, 0.09), pink);
+    loop.position.set(side * 0.1, 0, 0);
+    loop.rotation.z = side * 0.5;
     g.add(loop);
   }
-  const knot = new THREE.Mesh(new THREE.SphereGeometry(0.032, 10, 10), pink);
+  const knot = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 10), pink);
   g.add(knot);
-  return g;
+  return finishAccessory(g);
 }
 
 function buildEarrings(): THREE.Group {
   const g = new THREE.Group();
   const gold = ACC_MAT.gold();
   for (const side of [-1, 1]) {
-    const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.028, 0.008, 8, 16), gold);
-    hoop.position.set(side * 0.40, -0.02, 0);
+    // dangling below the hair line, just outside its x envelope
+    const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.018, 8, 16), gold);
+    hoop.position.set(side * 0.42, -0.04, 0);
     g.add(hoop);
+    const stud = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), gold);
+    stud.position.set(side * 0.42, 0.03, 0);
+    g.add(stud);
   }
-  return g;
+  return finishAccessory(g);
 }
 
 function buildHeadphones(): THREE.Group {
   const g = new THREE.Group();
   const grey = ACC_MAT.grey();
   const silver = ACC_MAT.silver();
-  // band arched over the hair
+  // band arched OVER the hair, apex above y 1.21
   for (let i = 0; i <= 8; i += 1) {
     const t = i / 8 - 0.5;
-    const seg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.035, 0.06), grey);
-    seg.position.set(t * 0.92, 0.33 - t * t * 1.15, 0);
-    seg.rotation.z = -t * 1.2;
+    const seg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.06, 0.09), grey);
+    seg.position.set(t * 1.0, 0.48 - t * t * 1.7, 0);
+    seg.rotation.z = -t * 1.3;
     g.add(seg);
   }
   for (const side of [-1, 1]) {
-    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.05, 14), grey);
+    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.09, 14), grey);
     cup.rotation.z = Math.PI / 2;
-    cup.position.set(side * 0.46, -0.06, 0);
-    cup.castShadow = true;
+    cup.position.set(side * 0.44, -0.14, 0);
     g.add(cup);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.012, 8, 18), silver);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.022, 8, 18), silver);
     ring.rotation.y = Math.PI / 2;
-    ring.position.set(side * 0.485, -0.06, 0);
+    ring.position.set(side * 0.49, -0.14, 0);
     g.add(ring);
   }
-  return g;
+  return finishAccessory(g);
 }
 
 function buildScarf(): THREE.Group {
   const g = new THREE.Group();
   const red = ACC_MAT.red();
-  const wrap = new THREE.Mesh(new THREE.TorusGeometry(0.155, 0.055, 10, 22), red);
+  const wrap = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.075, 10, 22), red);
   wrap.rotation.x = Math.PI / 2;
-  wrap.castShadow = true;
   g.add(wrap);
-  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.2, 0.045), red);
-  tail.position.set(0.05, -0.13, -0.14);
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.26, 0.06), red);
+  tail.position.set(0.06, -0.16, -0.17); // models face -z, so the tail hangs in front
   tail.rotation.z = 0.12;
-  tail.castShadow = true;
   g.add(tail);
-  return g;
+  return finishAccessory(g);
 }
 
 function buildCrown(): THREE.Group {
   const g = new THREE.Group();
   const gold = ACC_MAT.gold();
-  const R = 0.24;
-  const band = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 0.08, 18, 1, true), gold);
-  band.castShadow = true;
+  const R = 0.26;
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 0.12, 18, 1, true), gold);
+  band.material.side = THREE.DoubleSide;
   g.add(band);
   for (let i = 0; i < 5; i += 1) {
     const a = (i / 5) * Math.PI * 2;
-    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.11, 6), gold);
-    spike.position.set(Math.cos(a) * R, 0.09, Math.sin(a) * R);
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.16, 6), gold);
+    spike.position.set(Math.cos(a) * R, 0.13, Math.sin(a) * R);
     g.add(spike);
   }
-  return g;
+  return finishAccessory(g);
 }
 
 function buildBackpack(): THREE.Group {
   const g = new THREE.Group();
   const brown = ACC_MAT.brown();
   const flap = new THREE.MeshStandardMaterial({ color: '#a5754f', roughness: 0.7 });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.34, 0.13), brown);
-  body.castShadow = true;
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.4, 0.18), brown);
   g.add(body);
-  const lid = new THREE.Mesh(new THREE.BoxGeometry(0.31, 0.12, 0.14), flap);
-  lid.position.set(0, 0.13, 0);
+  const lid = new THREE.Mesh(new THREE.BoxGeometry(0.37, 0.14, 0.19), flap);
+  lid.position.set(0, 0.16, 0);
   g.add(lid);
-  const pocket = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.13, 0.05), flap);
-  pocket.position.set(0, -0.07, 0.085);
+  const pocket = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.16, 0.06), flap);
+  pocket.position.set(0, -0.08, 0.11);
   g.add(pocket);
-  return g;
+  return finishAccessory(g);
 }
 
 /**
  * Bone + model-space target per accessory. `hat`/`cape`/`staff` are real pack
- * meshes handled by hide/gear, so they have no builder here.
+ * meshes handled by hide/gear, so they have no builder here. Targets respect
+ * the hair envelope (see the sizing rules above).
  */
 const ACCESSORY_BUILDERS: Partial<
   Record<AccessoryKey, { bone: RegExp; target: [number, number, number]; build: () => THREE.Group }>
 > = {
-  glasses: { bone: /head\.head/i, target: [0, 0.7, -0.262], build: buildGlasses },
-  flowerCrown: { bone: /head\.head/i, target: [0, 0.98, 0.02], build: buildFlowerCrown },
-  bow: { bone: /head\.head/i, target: [0.27, 0.96, 0.1], build: buildBow },
-  earrings: { bone: /head\.head/i, target: [0, 0.6, -0.02], build: buildEarrings },
-  headphones: { bone: /head\.head/i, target: [0, 0.72, 0.0], build: buildHeadphones },
+  glasses: { bone: /head\.head/i, target: [0, 0.7, -0.3], build: buildGlasses },
+  flowerCrown: { bone: /head\.head/i, target: [0, 1.06, 0.02], build: buildFlowerCrown },
+  bow: { bone: /head\.head/i, target: [0.3, 1.1, 0.05], build: buildBow },
+  earrings: { bone: /head\.head/i, target: [0, 0.56, -0.02], build: buildEarrings },
+  headphones: { bone: /head\.head/i, target: [0, 0.78, 0.0], build: buildHeadphones },
   scarf: { bone: /head\.neck/i, target: [0, 0.5, 0], build: buildScarf },
-  crown: { bone: /head\.head/i, target: [0, 1.02, 0.02], build: buildCrown },
-  backpack: { bone: /head\.neck/i, target: [0, 0.28, 0.2], build: buildBackpack },
+  crown: { bone: /head\.head/i, target: [0, 1.24, 0.02], build: buildCrown },
+  backpack: { bone: /head\.neck/i, target: [0, 0.26, 0.3], build: buildBackpack },
 };
 
 /* ------------------------- texture repainting ------------------------- */

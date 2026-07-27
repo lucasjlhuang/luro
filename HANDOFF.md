@@ -265,6 +265,15 @@ roots + tips, eyes, outfit, trim, freckles/blush/stubble, pattern, accessories.
   no-ops for a character is a lie in the UI. Same principle as
   `ACCESSORY_DEFS.roles`; audit new wardrobe options against WHO buildLook
   actually applies them to.
+- ACCESSORY SIZING RULES (learned when all 8 shipped invisible): the room is
+  ~45 px/unit, so no member under 0.04 units (the first glasses had 0.011-unit
+  frames = half a pixel); and the HAIR envelope is y 0.43..1.21, x/z +/-0.40 —
+  head accessories must clear it (crowns perch above 1.21, rings r>=0.40,
+  earrings dangle below the hair line, headphone band arches over the top).
+  Attach math itself was verified correct via the bind matrices.
+- Pyjama prints run through garmentPattern's `sizeMul` (2 at night): doubles
+  motif size, halves count. Cheek stickers were built and REMOVED at the
+  user's request.
 - The panel's custom colour input commits on BLUR (picker closed), not per
   change — the picker fires dozens of events per second and each would be a
   full 512x512 repaint plus a ~1MB cached CanvasTexture. Swatches are instant.

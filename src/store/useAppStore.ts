@@ -109,7 +109,6 @@ export const accessoryLabel = (key: AccessoryKey, role: Role): string => {
  */
 export const PATTERN_ROLES: Role[] = ['USER_A', 'USER_B'];
 export type PatternKey = 'none' | 'flowers' | 'dots' | 'stars' | 'moons' | 'stripes' | 'plaid';
-export type CheekSticker = 'none' | 'heart' | 'star' | 'flower';
 
 export const PATTERNS: Array<{ key: PatternKey; label: string }> = [
   { key: 'none', label: 'Plain' },
@@ -141,7 +140,6 @@ export interface Appearance {
   pattern: PatternKey;
   /** null = the pattern's own default (pink motifs, trim-coloured weaves). */
   patternColor: string | null;
-  cheekSticker: CheekSticker;
   accessories: Record<AccessoryKey, boolean>;
   /**
    * null = FOLLOW the outfit: Lulu's hat/cape track his trim colour, Roro's
@@ -165,7 +163,6 @@ const DEFAULT_APPEARANCE: Record<Role, Appearance> = {
     blush: false,
     pattern: 'none',
     patternColor: null,
-    cheekSticker: 'none',
     accessories: {
       hat: false,
       cape: false,
@@ -192,7 +189,6 @@ const DEFAULT_APPEARANCE: Record<Role, Appearance> = {
     blush: true,
     pattern: 'flowers',
     patternColor: null,
-    cheekSticker: 'none',
     accessories: {
       hat: false,
       cape: false,
@@ -235,7 +231,6 @@ const sanitizeAppearance = (state: AppearanceState | undefined): AppearanceState
       blush: a.blush === true,
       pattern: PATTERNS.some((pt) => pt.key === a.pattern) ? a.pattern : 'none',
       patternColor: isHex(a.patternColor) ? a.patternColor : null,
-      cheekSticker: ['heart', 'star', 'flower'].includes(a.cheekSticker) ? a.cheekSticker : 'none',
       accessories: ACCESSORY_DEFS.reduce(
         (acc, { key }) => ({ ...acc, [key]: a.accessories?.[key] === true }),
         {} as Record<AccessoryKey, boolean>

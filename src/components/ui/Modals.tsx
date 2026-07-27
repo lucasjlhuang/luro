@@ -11,7 +11,6 @@ import {
 } from 'react';
 import {
   Appearance,
-  CheekSticker,
   PATTERNS,
   patternDefaultColor,
   HABIT_NAME_MAX,
@@ -923,24 +922,6 @@ function WardrobeModal() {
             <div className="flex flex-wrap gap-1.5">
               <Toggle label="Freckles" on={a.freckles} onChange={(v) => set({ freckles: v })} />
               <Toggle label="Blush" on={a.blush} onChange={(v) => set({ blush: v })} />
-            </div>
-            <div className="mt-1.5 flex items-center gap-1.5">
-              <span className="text-[10px] text-[#7a6242]">Cheek</span>
-              {(
-                [
-                  ['none', 'None'],
-                  ['heart', '♥'],
-                  ['star', '★'],
-                  ['flower', '✿'],
-                ] as Array<[CheekSticker, string]>
-              ).map(([key, label]) => (
-                <Toggle
-                  key={key}
-                  label={label}
-                  on={a.cheekSticker === key}
-                  onChange={() => set({ cheekSticker: key })}
-                />
-              ))}
             </div>
           </div>
 
