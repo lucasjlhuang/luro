@@ -472,7 +472,7 @@ function buildFlowerCrown(role: Role): THREE.Group {
   const leaf = ACC_MAT.leaf();
   // nestles into the upper hair dome — full clearance read as a hoop.
   // Roro's hair ball is wider, so her ring runs slightly larger.
-  const R = role === 'USER_B' ? 0.34 : 0.3;
+  const R = role === 'USER_B' ? 0.38 : 0.3;
   const band = new THREE.Mesh(new THREE.TorusGeometry(R, 0.035, 8, 28), leaf);
   band.rotation.x = Math.PI / 2;
   g.add(band);
@@ -1645,7 +1645,11 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
         const tmpP = new THREE.Vector3();
         const tmpS = new THREE.Vector3();
         inv.decompose(tmpP, q, tmpS);
-        group.quaternion.copy(q); // cancel the bone's bind rotation
+        // Cancel the bone's bind rotation, then re-apply whatever orientation
+        // the builder gave the group. copy() alone OVERWRITES it — the hair
+        // bow's sideways turn was silently discarded that way.
+        const own = group.quaternion.clone();
+        group.quaternion.copy(q).multiply(own);
         skeleton.bones[bi].add(group);
       }
     }
