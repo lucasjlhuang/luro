@@ -542,6 +542,9 @@ function buildCrown(): THREE.Group {
 const ACCESSORY_BUILDERS: Partial<
   Record<AccessoryKey, { bone: RegExp; target: [number, number, number]; build: () => THREE.Group }>
 > = {
+  // The dot is OPTIONAL on purpose: GLTFLoader strips '[ ] . : /' from node
+  // names (PropertyBinding.sanitizeNodeName), so the GLB's 'Head.head.001' is
+  // 'Headhead001' at runtime — a required dot matches no bone at all.
   flowerCrown: { bone: /head\.?head/i, target: [0, 1.1, 0.02], build: buildFlowerCrown },
   bow: { bone: /head\.?head/i, target: [0.3, 1.1, 0.05], build: buildBow },
   scarf: { bone: /head\.?neck/i, target: [0, 0.5, 0], build: buildScarf },
