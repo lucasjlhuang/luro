@@ -216,6 +216,19 @@ roots + tips, eyes, outfit, trim, freckles/blush/stubble, pattern, accessories.
   bone-local space via the BIND-POSE matrices — it must run before the mixer
   touches the clone. Add accessories the same way; list them in `ACCESSORIES`
   in the store and the panel picks them up automatically.
+- **The fitted memo re-runs on the SAME clone** every wardrobe change — three
+  bugs shipped in 0.1.4 because the traverse assumed a fresh scene:
+  1. visibility must be set BOTH ways (`obj.visible = true` for non-hidden) or
+     a mesh hidden by the previous look stays hidden until restart;
+  2. painting must start from `userData.origMaterial` (stashed on first touch),
+     never from `obj.material` — that repaints the previous repaint, the hue
+     matchers find nothing in the recoloured texture, and colours no-op;
+  3. the height fit must exclude a FIXED list (`NEVER_MEASURED`: hat, cloak,
+     weapon), not the current hide list, or toggling an accessory on grows the
+     measured box and shrinks the whole character.
+- The panel's custom colour input commits on BLUR (picker closed), not per
+  change — the picker fires dozens of events per second and each would be a
+  full 512x512 repaint plus a ~1MB cached CanvasTexture. Swatches are instant.
 - Preview renderer gotcha: an early version sampled ONE texel per triangle and
   flat-filled, which smears anything smaller than a face — flowers came out as
   giant coloured triangles. `scratchpad/texrender.js` interpolates UVs per

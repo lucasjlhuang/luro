@@ -822,10 +822,14 @@ function ColorRow({
           }}
         />
       ))}
+      {/* Commits on close, not per drag-tick: every change is a full texture
+          repaint, and the picker fires dozens of events per second. keyed so
+          an external change (a swatch, the partner) still refreshes it. */}
       <input
+        key={value}
         type="color"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
+        defaultValue={value}
+        onBlur={(e) => onChange(e.target.value)}
         title="Custom colour"
         className="ml-0.5 h-[16px] w-[22px] shrink-0 cursor-pointer rounded border border-black/15 bg-transparent p-0"
       />

@@ -1155,11 +1155,15 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
 
     // Measure the SOURCE scene, not the animated clone: a SkinnedMesh's bounds
     // follow its current pose, so measuring the clone made the character
-    // resize (and slide off-axis) whenever it was re-fitted mid-animation —
-    // which is exactly what swapping characters in the settings menu did. The
-    // source is never animated, so it always reads the bind pose. Gear is
-    // excluded so putting the hat on can't change the size either.
-    const box = computeSceneBox(srcScene, (m) => isGear(m) || isHidden(m));
+    // resize (and slide off-axis) whenever it was re-fitted mid-animation.
+    // The exclusion list is FIXED, not the current look's hide list: measuring
+    // "whatever is hidden right now" meant toggling the hat on grew the box
+    // and shrank the whole character to keep CHAR_HEIGHT. Accessories must
+    // never participate in the fit, worn or not.
+    const NEVER_MEASURED = ['outfit_hat', 'outfit_cloak', 'weapon'];
+    const box = computeSceneBox(srcScene, (m) =>
+      NEVER_MEASURED.some((k) => namesOf(m).some((n) => matches(n, k)))
+    );
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
     const scale = CHAR_HEIGHT / Math.max(size.y, 1e-6);
@@ -1180,11 +1184,23 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
         obj.visible = false;
         return;
       }
+      // Explicitly TRUE, not left alone: this memo re-runs on the same clone
+      // every time the wardrobe changes, and a mesh hidden by the previous
+      // look stays hidden forever unless someone un-hides it. This line is
+      // what makes toggling the hat/cape ON work without an app restart.
+      obj.visible = true;
       if (isGear(obj)) {
         gear.push(obj);
         obj.visible = false; // shown again only while WORKING
       }
-      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      // Always paint from the ORIGINAL materials, stashed on first touch.
+      // Painting from obj.material meant repainting the previous repaint:
+      // the hue matchers then hunted for teal cloth in an already-sage
+      // texture, matched nothing, and colour changes silently no-opped
+      // until a restart supplied a fresh clone.
+      const ud = obj.userData as { origMaterial?: THREE.Material | THREE.Material[] };
+      const orig = ud.origMaterial ?? (ud.origMaterial = obj.material);
+      const mats = Array.isArray(orig) ? orig : [orig];
       // Loose name match, then repaint the emissive atlas (see paintMaterial —
       // this pack is emissive-only, and one atlas covers dress + sash + trim).
       const lookup = <T,>(table: Record<string, T> | undefined, mat: THREE.Material) => {
@@ -1203,7 +1219,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
         paintMaterial(clone, bands ?? [], obj.geometry, stamps);
         return clone;
       };
-      obj.material = Array.isArray(obj.material) ? mats.map(paintOne) : paintOne(mats[0]);
+      obj.material = Array.isArray(orig) ? mats.map(paintOne) : paintOne(mats[0]);
       const applied = Array.isArray(obj.material) ? obj.material : [obj.material];
       applied.forEach((m) => {
         const em = m as THREE.Material & {
