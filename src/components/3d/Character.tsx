@@ -465,12 +465,14 @@ function finishAccessory(g: THREE.Group): THREE.Group {
   return g;
 }
 
-function buildFlowerCrown(): THREE.Group {
+function buildFlowerCrown(role: Role): THREE.Group {
   const g = new THREE.Group();
   const petal = ACC_MAT.pink();
   const centre = ACC_MAT.gold();
   const leaf = ACC_MAT.leaf();
-  const R = 0.3; // nestles into the upper hair dome — full clearance read as a hoop
+  // nestles into the upper hair dome — full clearance read as a hoop.
+  // Roro's hair ball is wider, so her ring runs slightly larger.
+  const R = role === 'USER_B' ? 0.34 : 0.3;
   const band = new THREE.Mesh(new THREE.TorusGeometry(R, 0.035, 8, 28), leaf);
   band.rotation.x = Math.PI / 2;
   g.add(band);
@@ -506,6 +508,9 @@ function buildBow(): THREE.Group {
   const c = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 10), centre);
   c.position.set(0, 0, 0.02);
   g.add(c);
+  // face outward from the side of the head, with a jaunty 15-degree tilt
+  g.rotation.y = Math.PI / 2;
+  g.rotation.z = (15 * Math.PI) / 180;
   return finishAccessory(g);
 }
 
@@ -528,7 +533,10 @@ function buildScarf(): THREE.Group {
  * the hair envelope (see the sizing rules above).
  */
 const ACCESSORY_BUILDERS: Partial<
-  Record<AccessoryKey, { bone: RegExp; target: [number, number, number]; build: () => THREE.Group }>
+  Record<
+    AccessoryKey,
+    { bone: RegExp; target: [number, number, number]; build: (role: Role) => THREE.Group }
+  >
 > = {
   // The dot is OPTIONAL on purpose: GLTFLoader strips '[ ] . : /' from node
   // names (PropertyBinding.sanitizeNodeName), so the GLB's 'Head.head.001' is
@@ -1630,7 +1638,7 @@ export default function Character({ variant }: { variant: 'me' | 'partner' }) {
         const bi = skeleton.bones.findIndex((b) => def.bone.test(b.name));
         if (bi < 0) continue;
         const inv = skeleton.boneInverses[bi];
-        const group = def.build();
+        const group = def.build(role);
         group.name = `acc:${accKey}`;
         group.position.set(...def.target).applyMatrix4(inv);
         const q = new THREE.Quaternion();

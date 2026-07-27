@@ -80,7 +80,7 @@ export const ACCESSORY_DEFS: Array<{
   { key: 'cape', roles: ['USER_A'], label: { default: 'Cape' } },
   { key: 'staff', roles: ['USER_A', 'USER_B'], label: { default: 'Staff (at work)' } },
   { key: 'flowerCrown', roles: ['USER_A', 'USER_B'], label: { default: 'Flower crown' } },
-  { key: 'bow', roles: ['USER_A', 'USER_B'], label: { default: 'Hair flower' } },
+  { key: 'bow', roles: ['USER_A', 'USER_B'], label: { default: 'Hair bow' } },
   { key: 'scarf', roles: ['USER_A', 'USER_B'], label: { default: 'Scarf' } },
 ];
 
