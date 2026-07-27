@@ -311,8 +311,8 @@ function buildLook(role: Role, a: Appearance): Look {
       {
         kind: 'flower',
         color: '#EC93B8',
-        count: 42,
-        size: 8.5,
+        count: 36,
+        size: 12.8,
         opacity: 0.95,
         seed: 5,
         where: (p) => p.y > 0.12 && p.y < 0.88,
@@ -324,8 +324,8 @@ function buildLook(role: Role, a: Appearance): Look {
         {
           kind: 'flower',
           color: '#EC93B8',
-          count: 14,
-          size: 7.5,
+          count: 12,
+          size: 11.2,
           opacity: 0.95,
           seed: 8,
           where: () => true,
@@ -654,21 +654,33 @@ function repaintTexture(
               if (!tmap.used[p]) continue;
               if (!st.where({ x: tmap.x[p], y: tmap.y[p], z: tmap.z[p] })) continue;
               placed += 1;
-              const r = st.size * (0.7 + hashRand(seed + i * 5) * 0.6);
               if (st.kind === 'dot') {
+                const r = st.size * (0.7 + hashRand(seed + i * 5) * 0.6);
                 ctx.beginPath();
                 ctx.arc(px, py, r, 0, Math.PI * 2);
                 ctx.fill();
               } else {
-                // five petals plus a centre
+                // Each flower varies: wide size spread, 5 or 6 petals, and a
+                // per-flower shade of the base pink — identical stamps read as
+                // wallpaper, not printed fabric.
+                const r = st.size * (0.55 + hashRand(seed + i * 5) * 0.9);
+                const baseN = parseInt(st.color.slice(1), 16);
+                const [bH, bS, bL] = rgbToHsl((baseN >> 16) & 255, (baseN >> 8) & 255, baseN & 255);
+                const [fr, fg, fb] = hslToRgb(
+                  bH + (hashRand(seed + i * 13) - 0.5) * 10,
+                  bS,
+                  Math.min(0.92, Math.max(0.35, bL + (hashRand(seed + i * 17) - 0.5) * 0.16))
+                );
+                ctx.save();
+                ctx.fillStyle = `rgb(${fr | 0},${fg | 0},${fb | 0})`;
+                const petals = hashRand(seed + i * 19) < 0.3 ? 6 : 5;
                 const rot = hashRand(seed + i * 11) * Math.PI * 2;
-                for (let k = 0; k < 5; k += 1) {
-                  const a = rot + (k / 5) * Math.PI * 2;
+                for (let k = 0; k < petals; k += 1) {
+                  const a = rot + (k / petals) * Math.PI * 2;
                   ctx.beginPath();
                   ctx.arc(px + Math.cos(a) * r, py + Math.sin(a) * r, r * 0.62, 0, Math.PI * 2);
                   ctx.fill();
                 }
-                ctx.save();
                 ctx.globalAlpha = (st.opacity ?? 1) * 0.9;
                 ctx.fillStyle = '#ffe9a8';
                 ctx.beginPath();
