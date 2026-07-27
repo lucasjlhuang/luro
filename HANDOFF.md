@@ -1,21 +1,36 @@
 # luro (formerly "Desk Overlay") — Session Handoff
 
-Read this first in a fresh session. Working dir: `/Users/yer/desk-overlay` — the DIRECTORY keeps
-the old name; the app is called "luro" (git repo,
-commit after every accepted change; history is the undo mechanism — the user says
-"revert" often).
+Read this first in a fresh session. Working dir: `/Users/yer/desk-overlay` — the
+DIRECTORY keeps the old name; the app is called **luro**. Git repo; commit after
+every accepted change (history is the undo mechanism — the user says "revert"
+often).
+
+## STATUS as of 2026-07-26
+
+- **Shipped: v0.1.7**, published and live. Working tree clean, main pushed,
+  nothing pending. Both users' installs self-update.
+- Repo: https://github.com/lucasjlhuang/luro (PUBLIC). `gh` CLI is installed and
+  authenticated as lucasjlhuang — you can read logs, rerun jobs, publish releases.
+- Users: **Lulu = USER_A (boy, Lucas)**, **Roro = USER_B (girl)**. A third person
+  tests occasionally.
+- The last stretch was character customisation (wardrobe panel, patterns,
+  accessories, pyjamas). The next conversation was going to be **feature ideation**
+  — see "Roadmap / ideation" at the bottom, which captures where that landed.
 
 ## What this is
 
 A collaborative, transparent, always-on-top desktop overlay (Tauri v2 + React 18 +
-TS + three.js/R3F + drei + Zustand + Tailwind + PeerJS). Two users — **Lulu =
-USER_A (boy)** and **Roro = USER_B (girl)** — each run it; it auto-connects P2P
-(static peer IDs `desk-overlay-user-a/b`, public PeerJS broker) and syncs a shared
-isometric room: notebook, corkboard, whiteboard, pomodoro clock, day/night lamp,
-speech bubbles, character status + live position. The user runs `npm run tauri dev`
+TS + three.js/R3F + drei + Zustand + Tailwind + PeerJS). Two users each run it; it
+pairs P2P over WebRTC (PeerJS public broker, ids `luro-<paircode>-a|b`) and syncs a
+shared isometric room: notebook, corkboard, whiteboard, pomodoro clock, day/night
+lamp, habit tracker, wardrobe, speech bubbles, character status + live position.
+
+**Verification discipline (IMPORTANT):** the user runs `npm run tauri dev`
 themselves. **Never launch preview servers or browser-test — verify with
-`npm run build` (tsc + vite) only, then commit.** User tests visually and reports
-back; expect blind-tuning loops ("move it 25px left").
+`npm run build` (tsc + vite) only, then commit.** The user tests visually and
+reports back; expect blind-tuning loops ("move it 25px left"). For anything
+texture- or geometry-related, RENDER IT OFFLINE FIRST (see the scratchpad harness
+note) — that has caught many bugs before the user saw them.
 
 ## Working conventions
 
@@ -119,13 +134,14 @@ no longer a global CLIPS const.
   - Lulu pool: attack, blocking_loop, buff, gathering, get_hit, jump,
     run_attack, run_back. (blocking_loop was excluded for Roro but NOT listed
     for Lulu — user's list, left as given.)
-- `CUSTOMIZE.hide` is permanent: `outfit_hat` for both (the hood covers the real
-  hair mesh; the user does NOT want hats at work either) plus `outfit_cloak`
-  for Lulu.
-- **Work gear** (`CUSTOMIZE.gear`): `weapon` only, for both. Visible ONLY while
+- `Look.hide` / `Look.gear` come out of `buildLook` (NOT the old `CUSTOMIZE`
+  const, which is gone). `hide` holds whatever the appearance says is off —
+  `outfit_hat` unless the Hat/Hood accessory is on, `outfit_cloak` unless Cape
+  is, `weapon` unless Staff is.
+- **Work gear**: `weapon` when the Staff accessory is on. Visible ONLY while
   WORKING (not dragged, not mid-teleport); hidden when idling, roaming, carried
-  or in bed. Lulu's cape is on `hide`, so it never appears at all. Both hide and
-  gear are excluded from the height fit, so gear can never change the size.
+  or in bed. Hidden meshes and gear are excluded from the height fit via a FIXED
+  list (`NEVER_MEASURED`), so toggling an accessory can never resize anyone.
 - **Size is fixed and identical for both**: `CHAR_HEIGHT` 1.27 = the chairs'
   height (back top 1.133 x scale 1.12). `HEAD_TOP` is tied to it.
 - The old resize/drift-on-character-swap bug: `computeSceneBox` was measuring
@@ -428,11 +444,76 @@ atlas per triangle) is what identified the sash vs the hem in the first place.
 - Old zips on user Desktop; scratch conversions under /private/tmp (gone after
   reboot — re-request source files if needed).
 
-## Likely next asks
+## Offline preview harness (USE THIS — it has caught most bugs)
 
-- Colour/removal tweaks on either character — the dials are the `CUSTOMIZE`
-  table, the `isTrim*` predicates (dress/trim boundary) and `SASH_BAND`.
-- Confirm Lulu's facing and walk clip (see the two NOTEs above).
-- Sit animation someday (neither pack has a sit clip, so working = standing).
+`/private/tmp/.../scratchpad/` is wiped on reboot, so REBUILD it when needed. The
+pattern that works: port the shipped pixel maths to a throwaway node script, apply
+it to a texture extracted from the GLB, then software-rasterise the mesh sampling
+that texture, and LOOK at the PNG. Key pieces to recreate:
+
+- GLB reader: parse the JSON chunk (`readUInt32LE(12)` = length), walk accessors
+  via bufferViews for POSITION / TEXCOORD_0 / indices; extract embedded images
+  from bufferViews (`sips -s format bmp` to read them; sips DROPS ALPHA on
+  webp→png, so read alpha from the original webp).
+- `texelMap` port: rasterise triangles into UV space storing normalised 3D
+  position per texel — the same thing the app builds.
+- **Renderer must interpolate UVs PER PIXEL.** An early version sampled one texel
+  per triangle and flat-filled; flowers rendered as giant coloured triangles and
+  nothing smaller than a face could be judged. Barycentric-interpolate u,v.
+- Bugs this caught: a hue-wrap error that rendered a pink sash BLUE; the sash/hem
+  distinction; Lulu's belt-vs-trousers split; pyjama motifs too small. Also note
+  the harness itself has been wrong before (its crescent-moon polygon had the
+  inner arc on the wrong side while the shipped canvas version was fine) — when
+  preview and code disagree, suspect both.
+
+## Roadmap / ideation (where the conversation was heading)
+
+The user asked to brainstorm future features and named two directions. Assessment
+given, not yet started:
+
+**More rooms** — procedural building is cheap (same as the guitar/dumbbell work).
+The catch: character roaming is a HAND-AUTHORED nav graph, so each room needs its
+own OBSTACLES + WAYPOINTS, verified. Two shapes discussed: (a) door-swap with a
+smoke-puff teleport, one room rendered at a time, sync = which room each character
+is in; (b) a bigger connected floor plan panned via the rug-drag. User was asked
+which instinct they preferred — ANSWER NOT YET GIVEN.
+
+**Drag-and-drop room decorating** — feasible; drag mechanics, floor raycast and
+the shared-list sync shape (habit board) all exist. Two real problems: dragging the
+floor currently PANS the room, so it needs an explicit edit mode; and moving a prop
+must RECOMPUTE the nav graph (neighbour computation is already a function but runs
+once at module load).
+
+Other ideas offered, roughly by cost — 🟢 config/existing machinery, 🟡 a session,
+🔴 multi-session:
+
+- 🟢 **Poke/wave**: click partner's character → theirs waves + blushes on both
+  screens (flourish clips + blush stamp + one sync message). Flagged as the single
+  most "luro" feature and my top pick.
+- 🟢 **Room palette in the wardrobe** — the room's palette `P` is one object;
+  wall/floor/rug colours become shared state exactly like `appearance`.
+- 🟢 Partner's local time on the alarm clock; emote wheel from unused clips;
+  anniversary countdown on the corkboard; offline partner reads as sleeping;
+  seasonal auto-decor; window view picker; tic-tac-toe on the corkboard (the
+  habit-grid sync pattern exactly).
+- 🟡 Polaroids on the wall (photo over the data channel — needs a size cap);
+  a shared pet that wanders both rooms; weekly focus stats from the pomodoro.
+- 🔴 **Garden room where plants grow with habit streaks** — flagged as the best
+  idea of the set; ties the existing habit tracker to a new room.
+- Practical: native notification when the partner writes/draws while you're away;
+  whole-room scale slider; do-not-disturb auto-status.
+
+## Other known gaps / likely asks
+
+- Sit animation (neither pack has a sit clip, so WORKING = standing on the chair).
 - Foot-slide tuning: match WALK_SPEED (1.05) to each run clip's stride via
   timeScale.
+- Chair choice on drop isn't synced (partner sees your status at their default
+  chair anchor).
+- Lulu's walk clip is `run_mage` (the user's exclusion list named `walk.mage`);
+  swap if they ever say he should walk differently.
+- Stripes/plaid default to the garment's TRIM colour — low contrast on a similar
+  outfit. If the user says they are hard to see, that is contrast, not a bug;
+  point them at the pattern colour row or bump the default.
+- Accessory geometry dials (positions/sizes) are all one-liners in
+  `ACCESSORY_BUILDERS` + each `build*` function; the user iterates on these a lot.
